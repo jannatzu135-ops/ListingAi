@@ -397,8 +397,9 @@ export default function App() {
     const hostname = window.location.hostname;
     const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
     const isOriginal = hostname.includes(APP_ID);
+    const isGitHub = hostname.includes('github.io');
     
-    if (!isLocal && !isOriginal) {
+    if (!isLocal && !isOriginal && !isGitHub) {
       setIsDomainAuthorized(false);
     }
   }, []);
