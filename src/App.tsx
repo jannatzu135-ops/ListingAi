@@ -394,12 +394,13 @@ export default function App() {
 
   // Domain Authorization Check
   useEffect(() => {
-    const hostname = window.location.hostname;
+    const hostname = window.location.hostname.toLowerCase();
     const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-    const isOriginal = hostname.includes(APP_ID);
-    const isGitHub = hostname.includes('github.io');
+    const isOriginal = hostname.includes(APP_ID.toLowerCase());
+    const isGitHub = hostname.includes('github.io') || hostname.includes('jannatzu135-ops');
     
     if (!isLocal && !isOriginal && !isGitHub) {
+      console.error("Domain not authorized:", hostname);
       setIsDomainAuthorized(false);
     }
   }, []);
@@ -1100,7 +1101,7 @@ ${(result.aPlusContentIdeas || []).map((idea) => `[${idea.moduleName}]\nLayout: 
               </a>
             </div>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pt-4">
-              Security ID: {APP_ID}
+              Security ID: {APP_ID} | Host: {window.location.hostname}
             </p>
           </motion.div>
         </div>

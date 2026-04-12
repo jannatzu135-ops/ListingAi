@@ -434,12 +434,12 @@ export const generateListing = async (
       - Ensure the listing is highly SEO optimized for the specific platform's search algorithm.
 
       MARKET RESEARCH DATA (USE THIS AS THE SOURCE OF TRUTH):
-      - HSN Code: ${marketResearch.hsnCode}
-      - GST Rate: ${marketResearch.gstRate}
-      - Market Average (Median): ₹${marketResearch.marketAveragePrice}
-      - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice}
-      - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice}
-      - Competitor Benchmarks: ${marketResearch.competitorPrices.map((p: any) => "₹" + p).join(", ")}
+      - HSN Code: ${marketResearch.hsnCode || 'N/A'}
+      - GST Rate: ${marketResearch.gstRate || 'N/A'}
+      - Market Average (Median): ₹${marketResearch.marketAveragePrice || 0}
+      - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice || 0}
+      - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice || 0}
+      - Competitor Benchmarks: ${(marketResearch.competitorPrices || []).map((p: any) => "₹" + p).join(", ") || 'N/A'}
 
       PRICING STRATEGY CALCULATION RULES:
       1. Recommended/Balanced Price: Set this exactly at or slightly below the Market Average. Use psychological pricing (e.g., if average is 500, use 499 or 479).
