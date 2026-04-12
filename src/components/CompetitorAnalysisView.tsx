@@ -17,6 +17,11 @@ import {
   ExternalLink,
   Users,
   Layout,
+  Globe,
+  BarChart3,
+  Lightbulb,
+  ShieldAlert,
+  ArrowUpRight,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -66,11 +71,11 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
           <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
-            Competitor Analysis
+            Market Intelligence PRO
           </h1>
           <p className="text-neutral-500">
-            Analyze top competitors on any marketplace to gain a
-            competitive edge.
+            Advanced real-time market research and competitor analysis to
+            dominate your category.
           </p>
         </div>
         <div className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-3 self-start md:self-end">
@@ -162,12 +167,12 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
               {isAnalyzingCompetitor ? (
                 <>
                   <RefreshCw size={20} className="animate-spin" />
-                  Analyzing Competitors...
+                  Generating PRO Insights...
                 </>
               ) : (
                 <>
-                  <Target size={20} />
-                  Start Analysis
+                  <Zap size={20} />
+                  Get Market Intelligence
                 </>
               )}
             </button>
@@ -179,8 +184,150 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-10"
+          className="space-y-12"
         >
+          {/* PRO Insights Banner */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="p-6 rounded-3xl bg-blue-600 text-white shadow-xl shadow-blue-500/20 space-y-4 relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Lightbulb size={24} />
+                </div>
+                <h3 className="font-black text-lg">Winning Strategy</h3>
+              </div>
+              <p className="text-sm font-medium leading-relaxed opacity-90">
+                {competitorAnalysisResults[activeResultTab].proInsights?.winningStrategy}
+              </p>
+            </div>
+
+            <div className="p-6 rounded-3xl bg-emerald-600 text-white shadow-xl shadow-emerald-500/20 space-y-4 relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <DollarSign size={24} />
+                </div>
+                <h3 className="font-black text-lg">Pricing Sweet Spot</h3>
+              </div>
+              <p className="text-sm font-medium leading-relaxed opacity-90">
+                {competitorAnalysisResults[activeResultTab].proInsights?.pricingSweetSpot}
+              </p>
+            </div>
+
+            <div className="p-6 rounded-3xl bg-purple-600 text-white shadow-xl shadow-purple-500/20 space-y-4 relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Search size={24} />
+                </div>
+                <h3 className="font-black text-lg">SEO Opportunity</h3>
+              </div>
+              <p className="text-sm font-medium leading-relaxed opacity-90">
+                {competitorAnalysisResults[activeResultTab].proInsights?.seoOpportunity}
+              </p>
+            </div>
+          </div>
+
+          {/* Market Research Dashboard */}
+          <div className="space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-slate-900 rounded-2xl text-white shadow-2xl flex items-center justify-center">
+                <Globe size={32} />
+              </div>
+              <div>
+                <h2 className="text-3xl font-black tracking-tight">
+                  Market Research
+                </h2>
+                <p className="text-sm text-neutral-500 font-bold uppercase tracking-widest">
+                  Real-time trends and regulatory data
+                </p>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-4 gap-6">
+              <div className="p-6 rounded-3xl bg-white border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-blue-600">
+                  <TrendingUp size={18} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Market Average</span>
+                </div>
+                <p className="text-2xl font-black text-slate-900">
+                  ₹{competitorAnalysisResults[activeResultTab].marketResearch?.marketAveragePrice}
+                </p>
+              </div>
+
+              <div className="p-6 rounded-3xl bg-white border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-purple-600">
+                  <Hash size={18} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">HSN Code</span>
+                </div>
+                <p className="text-2xl font-black text-slate-900">
+                  {competitorAnalysisResults[activeResultTab].marketResearch?.hsnCode}
+                </p>
+              </div>
+
+              <div className="p-6 rounded-3xl bg-white border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-emerald-600">
+                  <DollarSign size={18} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">GST Rate</span>
+                </div>
+                <p className="text-2xl font-black text-slate-900">
+                  {competitorAnalysisResults[activeResultTab].marketResearch?.gstRate}
+                </p>
+              </div>
+
+              <div className="p-6 rounded-3xl bg-white border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-orange-600">
+                  <BarChart3 size={18} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Demand Forecast</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <span className="text-2xl font-black text-slate-900">
+                    {competitorAnalysisResults[activeResultTab].marketResearch?.demandForecast}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="p-8 rounded-[2.5rem] bg-slate-50 border border-neutral-200 space-y-6">
+                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Competitor Price Benchmarks</h4>
+                <div className="flex flex-wrap gap-3">
+                  {competitorAnalysisResults[activeResultTab].marketResearch?.competitorPrices?.map((price: any, i: number) => (
+                    <div key={i} className="px-4 py-2 bg-white rounded-xl border border-neutral-100 text-sm font-bold text-slate-700 shadow-sm">
+                      ₹{price}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-8 rounded-[2.5rem] bg-slate-50 border border-neutral-200 space-y-6">
+                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Current Market Trends</h4>
+                <div className="grid grid-cols-1 gap-3">
+                  {competitorAnalysisResults[activeResultTab].marketResearch?.marketTrends?.slice(0, 3).map((trend: string, i: number) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-white rounded-2xl border border-neutral-100">
+                      <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
+                        <Zap size={12} />
+                      </div>
+                      <p className="text-xs font-medium text-slate-700">{trend}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-8 rounded-[2.5rem] bg-slate-50 border border-neutral-200 space-y-6">
+                <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Market Risk Factors</h4>
+                <div className="flex flex-wrap gap-2">
+                  {competitorAnalysisResults[activeResultTab].proInsights?.riskFactors?.map((risk: string, i: number) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl border border-orange-100 text-[10px] font-bold">
+                      <ShieldAlert size={12} />
+                      {risk}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Target Product Analysis */}
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -190,7 +337,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                 </div>
                 <div>
                   <h2 className="text-3xl font-black tracking-tight">
-                    Market Intelligence
+                    Competitor Analysis
                   </h2>
                   <p className="text-sm text-neutral-500 font-bold uppercase tracking-widest">
                     Deep dive into your product's landscape
@@ -212,7 +359,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                     <h3 className="text-3xl font-black leading-tight tracking-tight">
                       {
                         competitorAnalysisResults[activeResultTab]
-                          .targetProduct?.name
+                          .competitorAnalysis?.targetProduct?.name
                       }
                     </h3>
                     <div className="flex items-center gap-3 text-sm font-bold text-neutral-500 uppercase tracking-widest">
@@ -222,7 +369,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                       />
                       {
                         competitorAnalysisResults[activeResultTab]
-                          .targetProduct?.pricingStrategy
+                          .competitorAnalysis?.targetProduct?.pricingStrategy
                       }
                     </div>
                   </div>
@@ -241,12 +388,12 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                               "px-2 py-0.5 rounded-full text-[10px] font-black uppercase",
                               competitorAnalysisResults[
                                 activeResultTab
-                              ]?.targetProduct?.reviewSentiment ===
+                              ].competitorAnalysis?.targetProduct?.reviewSentiment ===
                                 "Positive"
                                 ? "bg-blue-500/10 text-blue-500"
                                 : competitorAnalysisResults[
                                       activeResultTab
-                                    ]?.targetProduct
+                                    ].competitorAnalysis?.targetProduct
                                       ?.reviewSentiment === "Neutral"
                                   ? "bg-orange-500/10 text-orange-500"
                                   : "bg-red-500/10 text-red-500",
@@ -255,7 +402,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                             {
                               competitorAnalysisResults[
                                 activeResultTab
-                              ]?.targetProduct?.reviewSentiment
+                              ].competitorAnalysis?.targetProduct?.reviewSentiment
                             }
                           </div>
                         </div>
@@ -263,7 +410,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                           "
                           {
                             competitorAnalysisResults[activeResultTab]
-                              .targetProduct?.sentimentDetails
+                              .competitorAnalysis?.targetProduct?.sentimentDetails
                           }
                           "
                         </p>
@@ -277,7 +424,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="flex flex-wrap gap-2">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.topKeywords || []).map((kw: string, k: number) => (
+                          ].competitorAnalysis?.targetProduct?.topKeywords || []).map((kw: string, k: number) => (
                             <span
                               key={k}
                               className="px-3 py-1 bg-white border border-neutral-200 rounded-xl text-[11px] font-bold shadow-sm hover:border-blue-500 transition-colors cursor-default"
@@ -299,7 +446,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="space-y-2">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.strengths || []).map((s: string, i: number) => (
+                          ].competitorAnalysis?.targetProduct?.strengths || []).map((s: string, i: number) => (
                             <div
                               key={i}
                               className="p-3 rounded-2xl bg-blue-500/5 border border-blue-500/10 text-xs text-neutral-600 flex items-start gap-3"
@@ -322,7 +469,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="space-y-2">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.weaknesses || []).map((w: string, i: number) => (
+                          ].competitorAnalysis?.targetProduct?.weaknesses || []).map((w: string, i: number) => (
                             <div
                               key={i}
                               className="p-3 rounded-2xl bg-red-500/5 border border-red-500/10 text-xs text-neutral-600 flex items-start gap-3"
@@ -367,12 +514,12 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                       <span className="text-3xl font-black">
                         {
                           competitorAnalysisResults[activeResultTab]
-                            .suggestedPricingRange?.min
+                            .competitorAnalysis?.suggestedPricingRange?.min
                         }{" "}
                         -{" "}
                         {
                           competitorAnalysisResults[activeResultTab]
-                            .suggestedPricingRange?.max
+                            .competitorAnalysis?.suggestedPricingRange?.max
                         }
                       </span>
                     </div>
@@ -389,7 +536,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <MarkdownRenderer
                           content={
                             competitorAnalysisResults[activeResultTab]
-                              .suggestedPricingRange?.reasoning
+                              .competitorAnalysis?.suggestedPricingRange?.reasoning
                           }
                         />
                       </div>
@@ -415,7 +562,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                     <MarkdownRenderer
                       content={
                         competitorAnalysisResults[activeResultTab]
-                          ?.marketSummary
+                          .competitorAnalysis?.marketSummary
                       }
                     />
                   </div>
@@ -443,7 +590,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
             <div className="grid lg:grid-cols-3 gap-6">
               {(competitorAnalysisResults[
                 activeResultTab
-              ].competitors || []).map((comp: any, idx: number) => (
+              ].competitorAnalysis?.competitors || []).map((comp: any, idx: number) => (
                 <motion.div
                   key={idx}
                   initial={{ opacity: 0, y: 20 }}
@@ -611,7 +758,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                             {
                               competitorAnalysisResults[
                                 activeResultTab
-                              ]?.targetProduct?.name
+                              ].competitorAnalysis?.targetProduct?.name
                             }
                           </span>
                           <span className="px-1.5 py-0.5 bg-blue-600 text-white text-[8px] font-bold rounded uppercase">
@@ -625,12 +772,12 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                             "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
                             competitorAnalysisResults[
                               activeResultTab
-                            ]?.targetProduct?.reviewSentiment ===
+                            ].competitorAnalysis?.targetProduct?.reviewSentiment ===
                               "Positive"
                               ? "bg-blue-500/10 text-blue-600"
                               : competitorAnalysisResults[
                                     activeResultTab
-                                  ]?.targetProduct
+                                  ].competitorAnalysis?.targetProduct
                                     ?.reviewSentiment === "Neutral"
                                 ? "bg-orange-500/10 text-orange-600"
                                 : "bg-red-500/10 text-red-600",
@@ -639,7 +786,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                           {
                             competitorAnalysisResults[
                               activeResultTab
-                            ]?.targetProduct?.reviewSentiment
+                            ].competitorAnalysis?.targetProduct?.reviewSentiment
                           }
                         </span>
                       </td>
@@ -647,7 +794,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="flex flex-wrap gap-1">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.topKeywords || [])
+                          ].competitorAnalysis?.targetProduct?.topKeywords || [])
                             .slice(0, 2)
                             .map((kw: string, i: number) => (
                               <span
@@ -663,7 +810,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="flex flex-wrap gap-1">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.strengths || [])
+                          ].competitorAnalysis?.targetProduct?.strengths || [])
                             .slice(0, 2)
                             .map((s: string, i: number) => (
                               <span
@@ -679,7 +826,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         <div className="flex flex-wrap gap-1">
                           {(competitorAnalysisResults[
                             activeResultTab
-                          ].targetProduct?.weaknesses || [])
+                          ].competitorAnalysis?.targetProduct?.weaknesses || [])
                             .slice(0, 2)
                             .map((w: string, i: number) => (
                               <span
@@ -694,7 +841,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                     </tr>
 
                     {/* Competitor Rows */}
-                    {(competitorAnalysisResults[activeResultTab].competitors || []).map(
+                    {(competitorAnalysisResults[activeResultTab].competitorAnalysis?.competitors || []).map(
                       (comp: any, idx: number) => (
                         <tr key={idx}>
                           <td className="px-6 py-4">
@@ -782,7 +929,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {(competitorAnalysisResults[
                 activeResultTab
-              ]?.gapAnalysis || []).map((gap: any, i: number) => (
+              ].competitorAnalysis?.gapAnalysis || []).map((gap: any, i: number) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, scale: 0.95 }}
@@ -799,22 +946,23 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
                         Competitor Missing
                       </span>
                     </div>
-                    <p className="text-base font-black leading-tight text-slate-900 group-hover:text-orange-600 transition-colors">
+                    <p className="text-sm font-bold text-slate-900 leading-tight">
                       {gap.competitorMissing}
                     </p>
                   </div>
-                  
-                  <div className="pt-6 border-t border-orange-100 relative">
-                    <div className="absolute -top-3 left-6 px-2 bg-white text-[10px] font-black text-blue-600 uppercase tracking-widest border border-blue-100 rounded">
-                      Opportunity
-                    </div>
-                    <div className="flex items-center gap-2 text-blue-600 mb-3">
-                      <Zap size={14} fill="currentColor" />
+
+                  <div className="w-full h-px bg-orange-100" />
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <div className="p-1.5 bg-emerald-100 rounded-lg">
+                        <Check size={14} />
+                      </div>
                       <span className="text-[10px] font-black uppercase tracking-widest">
-                        Our Strategic Edge
+                        Our Opportunity
                       </span>
                     </div>
-                    <p className="text-sm font-medium leading-relaxed text-neutral-600">
+                    <p className="text-sm font-medium text-neutral-600 leading-relaxed">
                       {gap.ourOpportunity}
                     </p>
                   </div>

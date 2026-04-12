@@ -24,10 +24,12 @@ import {
   generateListing,
   regenerateSection,
   analyzeCompetitor,
+  getMarketIntelligence,
   generateAPlusContent,
   type ListingResult,
   type ListingOptions,
   type CompetitorAnalysisResult,
+  type MarketIntelligenceResult,
   type APlusContentResult,
 } from "./services/geminiService";
 
@@ -114,11 +116,11 @@ export default function App() {
   const [whiteBgResult, setWhiteBgResult] = useState<string | null>(null);
   const [isProcessingWhiteBg, setIsProcessingWhiteBg] = useState(false);
 
-  // Competitor Analysis State
+  // Market Intelligence State
   const [competitorUrl, setCompetitorUrl] = useState("");
   const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = useState(false);
-  const [competitorAnalysisResults, setCompetitorAnalysisResults] = useState<
-    Record<string, CompetitorAnalysisResult>
+  const [marketIntelligenceResults, setMarketIntelligenceResults] = useState<
+    Record<string, MarketIntelligenceResult>
   >({});
 
   // A+ Content State
@@ -996,15 +998,18 @@ ${(result.aPlusContentIdeas || []).map((idea) => `[${idea.moduleName}]\nLayout: 
     const currentUsage = userData?.lastCompetitorDate === today ? (userData?.dailyCompetitorCount || 0) : 0;
     
     if (currentUsage >= COMPETITOR_DAILY_LIMIT) {
-      setError(`Daily competitor analysis limit reached (${COMPETITOR_DAILY_LIMIT} per day). Please try again tomorrow.`);
+      setError(`Daily market intelligence limit reached (${COMPETITOR_DAILY_LIMIT} per day). Please try again tomorrow.`);
       return;
     }
 
     setIsAnalyzingCompetitor(true);
     setError(null);
     try {
-      const result = await analyzeCompetitor(activeResultTab, competitorUrl);
-      setCompetitorAnalysisResults((prev) => ({
+      const result = await getMarketIntelligence(activeResultTab, {
+        inputValue: competitorUrl,
+        inputMethod: "url"
+      });
+      setMarketIntelligenceResults((prev) => ({
         ...prev,
         [activeResultTab]: result,
       }));
@@ -1256,7 +1261,7 @@ Timestamp: ${new Date().toISOString()}
                   setCompetitorUrl={setCompetitorUrl}
                   handleAnalyzeCompetitor={handleAnalyzeCompetitor}
                   isAnalyzingCompetitor={isAnalyzingCompetitor}
-                  competitorAnalysisResults={competitorAnalysisResults}
+                  competitorAnalysisResults={marketIntelligenceResults}
                   userData={userData}
                 />
               )}

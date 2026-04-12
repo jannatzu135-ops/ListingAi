@@ -150,6 +150,152 @@ export interface CompetitorAnalysisResult {
   };
 }
 
+export interface MarketIntelligenceResult {
+  marketResearch: {
+    hsnCode: string;
+    gstRate: string;
+    gstReasoning: string;
+    marketAveragePrice: string;
+    budgetPrice: string;
+    premiumPrice: string;
+    competitorPrices: string[];
+    productCategory: string;
+    marketTrends: string[];
+    demandForecast: string;
+  };
+  competitorAnalysis: CompetitorAnalysisResult;
+  proInsights: {
+    winningStrategy: string;
+    pricingSweetSpot: string;
+    seoOpportunity: string;
+    riskFactors: string[];
+  };
+}
+
+export const getMarketIntelligence = async (
+  platform: string,
+  options: { inputValue: string; inputMethod: string; imageB64?: string }
+): Promise<MarketIntelligenceResult> => {
+  const searchPrompt = `
+    Perform a PRO-LEVEL Market Intelligence and Competitor Analysis for the following product on ${platform} (India):
+    PRODUCT DATA: ${options.inputValue}
+    INPUT METHOD: ${options.inputMethod}
+    
+    CRITICAL: You MUST use the Google Search tool to find REAL-TIME data from Amazon.in, Flipkart, and Meesho.
+    
+    1. MARKET RESEARCH:
+       - Find the accurate HSN code and GST rate for India.
+       - Analyze current market trends for this category.
+       - Provide a demand forecast (High/Medium/Low) for the next 30 days.
+       - Identify the MEDIAN price, 25th percentile (Budget), and 75th percentile (Premium) for this category.
+       
+    2. COMPETITOR ANALYSIS:
+       - Identify the top 3-5 competitors currently dominating the search results.
+       - Find their ACTUAL live prices.
+       - Analyze their strengths and weaknesses.
+       - Perform a Gap Analysis: What are they missing?
+       
+    3. PRO INSIGHTS:
+       - Define a "Winning Strategy" to beat the current top sellers.
+       - Identify the "Pricing Sweet Spot" (a specific price point or very narrow range) for maximum conversion based on the median and competitor data.
+       - Find a "Hidden SEO Opportunity" (e.g., a high-volume keyword competitors are missing).
+    
+    Provide a detailed report of your findings.
+  `;
+
+  try {
+    const parts: any[] = [{ text: searchPrompt }];
+    if (options.imageB64) {
+      parts.push({
+        inlineData: { mimeType: "image/jpeg", data: options.imageB64 }
+      });
+    }
+
+    // Step 1: Get raw research data using Search
+    const searchResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: { parts },
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    }));
+
+    const rawData = searchResponse.text;
+
+    // Step 2: Format the raw data into JSON
+    const formatPrompt = `
+      Convert the following market research data into a structured JSON format.
+      
+      RAW DATA:
+      ${rawData}
+      
+      Return the data in this JSON format:
+      {
+        "marketResearch": {
+          "hsnCode": "string",
+          "gstRate": "string",
+          "gstReasoning": "string",
+          "marketAveragePrice": number,
+          "budgetPrice": number,
+          "premiumPrice": number,
+          "competitorPrices": [number],
+          "productCategory": "string",
+          "marketTrends": ["string"],
+          "demandForecast": "string"
+        },
+        "competitorAnalysis": {
+          "targetProduct": {
+            "name": "string",
+            "price": "string",
+            "pricingStrategy": "string",
+            "reviewSentiment": "Positive | Neutral | Negative",
+            "sentimentDetails": "string",
+            "topKeywords": ["string"],
+            "strengths": ["string"],
+            "weaknesses": ["string"]
+          },
+          "competitors": [
+            {
+              "name": "string",
+              "price": "string",
+              "pricingStrategy": "string",
+              "reviewSentiment": "Positive | Neutral | Negative",
+              "sentimentDetails": "string",
+              "topKeywords": ["string"],
+              "strengths": ["string"],
+              "weaknesses": ["string"]
+            }
+          ],
+          "marketSummary": "string",
+          "gapAnalysis": [
+            { "competitorMissing": "string", "ourOpportunity": "string" }
+          ],
+          "suggestedPricingRange": { "min": "string", "max": "string", "reasoning": "string" }
+        },
+        "proInsights": {
+          "winningStrategy": "string",
+          "pricingSweetSpot": "string",
+          "seoOpportunity": "string",
+          "riskFactors": ["string"]
+        }
+      }
+    `;
+
+    const formatResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: { parts: [{ text: formatPrompt }] },
+      config: {
+        responseMimeType: "application/json"
+      }
+    }));
+
+    return JSON.parse(formatResponse.text);
+  } catch (error) {
+    console.error("Market Intelligence failed:", error);
+    throw error;
+  }
+};
+
 export interface APlusModule {
   type: string;
   headline: string;
@@ -191,49 +337,72 @@ export const generateListing = async (
   console.log("Performing market research...");
   let marketResearch: any = null;
   try {
-    const researchPrompt = `
+    const researchSearchPrompt = `
       Perform deep market research for the following product in the Indian marketplace (Amazon.in, Flipkart, Meesho):
       PRODUCT DATA: ${options.inputValue}
       INPUT METHOD: ${options.inputMethod}
       
       1. Find the most accurate 4, 6, or 8-digit HSN code for this product in India.
       2. Find the current GST rate (0%, 5%, 12%, 18%, or 28%) for this HSN code.
-      3. CRITICAL: Find the ACTUAL current REALISTIC average price and competitor prices. 
-         - Look for the most common price points (Mid-range).
-         - Identify the lowest price (Aggressive/Budget).
-         - Identify the highest price (Premium).
-         - Do NOT rely on high-end outliers. Focus on what a typical customer pays.
+      3. CRITICAL: Find the ACTUAL current REALISTIC pricing landscape.
+         - Search for at least 5-10 similar products on Amazon.in and Flipkart.
+         - Identify the MEDIAN price (this is your Market Average).
+         - Identify the 25th percentile price (this is your Budget/Aggressive entry point).
+         - Identify the 75th percentile price (this is your Premium/High-end point).
+         - List at least 5 specific competitor prices found.
+         - Do NOT rely on high-end outliers or sponsored results that don't match the product quality.
       
-      Return the data in JSON format:
-      {
-        "hsnCode": "string",
-        "gstRate": "string",
-        "gstReasoning": "string",
-        "marketAveragePrice": "string (e.g., ₹499)",
-        "budgetPrice": "string (e.g., ₹299)",
-        "premiumPrice": "string (e.g., ₹999)",
-        "competitorPrices": ["string"],
-        "productCategory": "string"
-      }
+      Provide a detailed report of your findings.
     `;
 
-    const researchParts: any[] = [{ text: researchPrompt }];
+    const researchParts: any[] = [{ text: researchSearchPrompt }];
     if (options.imageB64) {
       researchParts.push({
         inlineData: { mimeType: "image/jpeg", data: options.imageB64 }
       });
     }
 
-    const researchResponse = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    // Step 1a: Get raw research data using Search
+    const researchSearchResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: { parts: researchParts },
       config: {
-        responseMimeType: "application/json",
-        tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+        tools: [{ googleSearch: {} }]
       }
     }));
-    marketResearch = JSON.parse(researchResponse.text);
+
+    const rawResearchData = researchSearchResponse.text;
+
+    // Step 1b: Format the research data into JSON
+    const researchFormatPrompt = `
+      Convert the following market research data into a structured JSON format.
+      
+      RAW DATA:
+      ${rawResearchData}
+      
+      Return the data in this JSON format:
+      {
+        "hsnCode": "string",
+        "gstRate": "string",
+        "gstReasoning": "string",
+        "marketAveragePrice": number,
+        "budgetPrice": number,
+        "premiumPrice": number,
+        "competitorPrices": [number],
+        "productCategory": "string",
+        "currency": "INR"
+      }
+    `;
+
+    const researchFormatResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: { parts: [{ text: researchFormatPrompt }] },
+      config: {
+        responseMimeType: "application/json"
+      }
+    }));
+
+    marketResearch = JSON.parse(researchFormatResponse.text);
     console.log("Market research completed:", marketResearch);
   } catch (error) {
     console.error("Market research failed, proceeding with estimates:", error);
@@ -241,9 +410,12 @@ export const generateListing = async (
       hsnCode: "Pending Research",
       gstRate: "18% (Estimated)",
       gstReasoning: "Standard rate for most consumer goods.",
-      marketAveragePrice: "Estimated based on category",
-      competitorPrices: [],
-      productCategory: "Detected from input"
+      marketAveragePrice: 500,
+      budgetPrice: 299,
+      premiumPrice: 999,
+      competitorPrices: [299, 499, 599, 899, 999],
+      productCategory: "Detected from input",
+      currency: "INR"
     };
   }
 
@@ -260,23 +432,20 @@ export const generateListing = async (
       - Use a 100% human-written, natural, and persuasive tone.
       - Avoid generic AI clichés and repetitive structures.
       - Ensure the listing is highly SEO optimized for the specific platform's search algorithm.
-      - Integrate relevant keywords naturally to maximize visibility and ranking.
 
-      MARKET RESEARCH DATA (USE THIS):
+      MARKET RESEARCH DATA (USE THIS AS THE SOURCE OF TRUTH):
       - HSN Code: ${marketResearch.hsnCode}
       - GST Rate: ${marketResearch.gstRate}
-      - GST Reasoning: ${marketResearch.gstReasoning}
-      - Market Average Price: ${marketResearch.marketAveragePrice}
-      - Budget/Aggressive Price: ${marketResearch.budgetPrice}
-      - Premium/High-end Price: ${marketResearch.premiumPrice}
-      - Product Category: ${marketResearch.productCategory}
+      - Market Average (Median): ₹${marketResearch.marketAveragePrice}
+      - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice}
+      - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice}
+      - Competitor Benchmarks: ${marketResearch.competitorPrices.map((p: any) => "₹" + p).join(", ")}
 
-      PRICING STRATEGY RULES:
-      - Recommended Price: Should be close to the "Market Average Price".
-      - Aggressive Price: Should be close to the "Budget/Aggressive Price".
-      - Premium Price: Should be close to the "Premium/High-end Price".
-      - DO NOT generate prices significantly higher than the Market Average unless there is a strong justification.
-      - If the user provided a specific pricing goal (${options.pricingGoal || 'Balanced'}), prioritize that.
+      PRICING STRATEGY CALCULATION RULES:
+      1. Recommended/Balanced Price: Set this exactly at or slightly below the Market Average. Use psychological pricing (e.g., if average is 500, use 499 or 479).
+      2. Aggressive Price: Set this near the Budget Entry point to undercut competition. Must end in 9 (e.g., 299, 349).
+      3. Premium Price: Set this near the Premium Tier. Justify it with "Superior Quality" or "Brand Value". Must end in 9 or 99.
+      4. Pricing Goal: ${options.pricingGoal || 'Balanced'}. If 'Aggressive', make the Recommended Price lean towards the Budget Entry.
 
       PLATFORM CONTEXT: ${rules.name}
       INPUT DATA: ${options.inputValue}
@@ -294,10 +463,9 @@ export const generateListing = async (
 
       GENERATION FLOW:
       1. Generate Title (compliant with limits)
-      2. Generate ONLY these output blocks: ${rules.outputBlocks.join(', ')}. Use standard markdown bullet points. CRITICAL: Each attribute or point within a block MUST be on its own line. Do NOT join multiple attributes with dashes or put them on the same line.
+      2. Generate ONLY these output blocks: ${rules.outputBlocks.join(', ')}. Use standard markdown bullet points.
       3. Generate Description (compliant with limits)
-      4. Generate Pricing Strategy (Aggressive, Balanced, Premium) based on market research.
-      5. Run compliance validator.
+      4. Generate Pricing Strategy (Aggressive, Balanced, Premium) using the CALCULATION RULES above.
 
       Return the response in JSON format:
       {
@@ -309,15 +477,15 @@ export const generateListing = async (
         "description": "string",
         "pricingStrategy": {
           "mode": "Live Market Data",
-          "averagePrice": "${marketResearch.marketAveragePrice}",
-          "budgetPrice": "${marketResearch.budgetPrice}",
-          "premiumPrice": "${marketResearch.premiumPrice}",
-          "recommendedPrice": "string",
-          "aggressivePrice": "string",
+          "averagePrice": "₹${marketResearch.marketAveragePrice}",
+          "budgetPrice": "₹${marketResearch.budgetPrice}",
+          "premiumPrice": "₹${marketResearch.premiumPrice}",
+          "recommendedPrice": "₹[Value]",
+          "aggressivePrice": "₹[Value]",
           "aggressiveReasoning": "string",
-          "balancedPrice": "string",
+          "balancedPrice": "₹[Value]",
           "balancedReasoning": "string",
-          "premiumPriceValue": "string",
+          "premiumPriceValue": "₹[Value]",
           "premiumReasoning": "string",
           "priceBand": "string",
           "confidence": "High",
