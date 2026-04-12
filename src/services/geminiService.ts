@@ -289,7 +289,7 @@ export const getMarketIntelligence = async (
       }
     }));
 
-    return JSON.parse(formatResponse.text);
+    return JSON.parse(cleanJsonResponse(formatResponse.text));
   } catch (error) {
     console.error("Market Intelligence failed:", error);
     throw error;
@@ -325,6 +325,22 @@ export interface ListingOptions {
   isAPlusEligible?: boolean;
   pricingGoal?: string;
 }
+
+const cleanJsonResponse = (text: string): string => {
+  if (!text) return "{}";
+  // Remove markdown code blocks if present
+  let cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+  
+  // Find the first '{' and the last '}' to extract only the JSON object
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  
+  return cleaned;
+};
 
 export const generateListing = async (
   platforms: string[],
@@ -402,7 +418,7 @@ export const generateListing = async (
       }
     }));
 
-    marketResearch = JSON.parse(researchFormatResponse.text);
+    marketResearch = JSON.parse(cleanJsonResponse(researchFormatResponse.text));
     console.log("Market research completed:", marketResearch);
   } catch (error) {
     console.error("Market research failed, proceeding with estimates:", error);
@@ -695,7 +711,7 @@ export const generateListing = async (
         config
       }));
 
-      const result = JSON.parse(response.text);
+      const result = JSON.parse(cleanJsonResponse(response.text));
       results[platform] = result;
     } catch (error) {
       console.error(`Error generating listing for ${platform}:`, error);
@@ -911,7 +927,7 @@ export const suggestPhotoshootSettings = async (imageB64: string, mode: string):
       config: { responseMimeType: "application/json" }
     }));
 
-    return JSON.parse(response.text);
+    return JSON.parse(cleanJsonResponse(response.text));
   } catch (error) {
     console.error("AI Suggestion failed:", error);
     throw error;
@@ -1043,7 +1059,7 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
       }
     }
 
-    const adviceResult = JSON.parse(adviceResponse.text);
+    const adviceResult = JSON.parse(cleanJsonResponse(adviceResponse.text));
 
     return {
       image: processedImage || `data:image/png;base64,${imageB64}`,
@@ -1109,7 +1125,7 @@ export const regenerateSection = async (
       },
     }));
 
-    const result = JSON.parse(response.text || "{}");
+    const result = JSON.parse(cleanJsonResponse(response.text || "{}"));
     const data = result[section];
     
     if ((section === 'keywords' || section === 'bulletPoints') && typeof data === 'string') {
@@ -1263,9 +1279,7 @@ export const analyzeCompetitor = async (
   const text = response.text || "{}";
   console.log("Competitor Analysis Raw Response:", text);
   
-  // Clean up potential markdown blocks if present (though responseMimeType should prevent them)
-  const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim();
-  const result = JSON.parse(cleanJson);
+  const result = JSON.parse(cleanJsonResponse(text));
   
   // Ensure the result has the required structure to prevent crashes
   if (!result.targetProduct) {
@@ -1364,7 +1378,7 @@ export const generateAPlusContent = async (productDetails: string, imageB64?: st
       config: { responseMimeType: "application/json" }
     }));
 
-    return JSON.parse(response.text);
+    return JSON.parse(cleanJsonResponse(response.text));
   } catch (error) {
     console.error('Error generating A+ Content:', error);
     throw error;
