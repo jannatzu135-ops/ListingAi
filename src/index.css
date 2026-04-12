@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+@theme {
+ --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+ --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+ --color-primary: #0f172a;
+ --color-primary-foreground: #f8fafc;
+ --color-secondary: #f1f5f9;
+ --color-secondary-foreground: #0f172a;
+ --color-accent: #3b82f6;
+ --color-accent-foreground: #ffffff;
+ --color-muted: #f8fafc;
+ --color-muted-foreground: #64748b;
+ --color-border: #e2e8f0;
+}
+
+@layer base {
+ body {
+ @apply bg-slate-50 text-slate-900 font-sans antialiased transition-colors duration-300;
+ }
+ 
+ 
+}
+
+.card {
+ @apply bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden transition-all hover:shadow-md;
+}
+
+.btn-primary {
+ @apply bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:scale-100;
+}
+
+.btn-secondary {
+ @apply bg-secondary text-secondary-foreground px-4 py-2 rounded-lg font-medium transition-all hover:bg-slate-200 active:scale-95;
+}
+
+.badge {
+ @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-blue { @apply bg-blue-100 text-blue-800; }
+.badge-green { @apply bg-green-100 text-green-800; }
+.badge-yellow { @apply bg-yellow-100 text-yellow-800; }
+.badge-red { @apply bg-red-100 text-red-800; }
+
+.platform-card {
+ @apply relative flex flex-col items-center gap-4 p-8 rounded-[2.5rem] border-2 transition-all duration-500 overflow-hidden;
+}
+
+.platform-card-active {
+ @apply border-blue-600 bg-blue-600/5 shadow-2xl shadow-blue-500/20 scale-[1.02];
+}
+
+.platform-card-inactive {
+ @apply border-transparent bg-white hover:border-blue-600/30 hover:bg-blue-600/[0.02] hover:scale-[1.01];
+}
+
+.glass-sidebar {
+ @apply bg-white/80 backdrop-blur-2xl border-r border-neutral-200/50 shadow-2xl;
+}
+
+.neo-button {
+ @apply relative overflow-hidden transition-all duration-500 active:scale-95 disabled:opacity-50 disabled:scale-100;
+}
+
+.neo-button::after {
+ content: '';
+ @apply absolute inset-0 bg-white/20 translate-y-full transition-transform duration-500;
+}
+
+.neo-button:hover::after {
+ @apply translate-y-0;
+}
+
+.animate-spin-slow {
+ animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+ from { transform: rotate(0deg); }
+ to { transform: rotate(360deg); }
+}
+
+/* Custom Prose List Styles for Arrows */
+.prose ul {
+  list-style-type: none !important;
+  padding-left: 0 !important;
+}
+
+.prose ul > li {
+  position: relative !important;
+  padding-left: 1.5em !important;
+  margin-top: 0.5em !important;
+  margin-bottom: 0.5em !important;
+  display: block !important;
+}
+
+.prose ul > li::before {
+  content: "→" !important;
+  position: absolute !important;
+  left: 0 !important;
+  color: #3b82f6 !important; /* blue-500 */
+  font-weight: bold !important;
+  background-color: transparent !important;
+}

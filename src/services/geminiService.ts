@@ -1,0 +1,1204 @@
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { PLATFORM_RULES, GLOBAL_RULES } from "../constants/platformRules";
+import { generateProductPrompt } from "./productPromptService";
+
+const apiKey = process.env.GEMINI_API_KEY || "";
+const ai = new GoogleGenAI({ apiKey });
+
+/**
+ * Helper function to retry API calls with exponential backoff
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 2000): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isRateLimit = error?.message?.includes('429') || 
+                          error?.message?.includes('RESOURCE_EXHAUSTED') ||
+                          error?.status === 429;
+      
+      if (isRateLimit && i < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, i);
+        console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+export interface PricingStrategy {
+  mode: 'Live Market Data' | 'Estimated';
+  averagePrice: string;
+  budgetPrice?: string;
+  premiumPrice?: string;
+  recommendedPrice: string;
+  aggressivePrice: string;
+  aggressiveReasoning: string;
+  balancedPrice: string;
+  balancedReasoning: string;
+  premiumPriceValue: string; // Renamed to avoid conflict with top-level premiumPrice
+  premiumReasoning: string;
+  priceBand: string;
+  confidence: 'High' | 'Medium' | 'Low' | 'Needs Manual Review';
+  whyItHelps: string;
+  notes: string[];
+}
+
+export interface ListingResult {
+  title: string;
+  titleVariations: {
+    short: string;
+    medium: string;
+    long: string;
+  };
+  platformSpecificBlocks: {
+    label: string;
+    content: string;
+    isCopyable: boolean;
+  }[];
+  description: string;
+  pricingStrategy: PricingStrategy;
+  complianceWarnings: string[];
+  rankingTips: string[];
+  stepByStepWorkflow: string[];
+  whyThisHelps: string;
+  hsnCode: string;
+  productCategory: string;
+  gstRate: string;
+  gstReasoning: string;
+  bulletPoints?: string[];
+  keywords?: string[];
+  backendSearchTerms?: string;
+  aPlusContentIdeas?: {
+    moduleName: string;
+    layoutIdea: string;
+    contentPrompt: string;
+    suggestedContent: string;
+  }[];
+  seoAnalysis: {
+    score: number;
+    scoreBreakdown: {
+      title: number;
+      bullets: number;
+      description: number;
+      keywords: number;
+    };
+    readabilityScore: string;
+    keywordDensity: string;
+    targetAudience: string;
+    rankingFactors: string[];
+    improvementSteps: string[];
+    competitorInsights: string;
+    platformSpecificAdvice: string;
+    keywordPerformance: {
+      keyword: string;
+      searchVolume: 'High' | 'Medium' | 'Low';
+      competition: 'High' | 'Medium' | 'Low';
+    }[];
+    competitorAnalysis: {
+      strategy: string;
+      advantage: string;
+    }[];
+  };
+  extractedFields: {
+    field: string;
+    value: string;
+    confidence: number;
+    isInferred: boolean;
+  }[];
+  category: {
+    main: string;
+    sub: string;
+  };
+}
+
+export interface CompetitorAnalysisResult {
+  targetProduct: {
+    name: string;
+    price: string;
+    pricingStrategy: string;
+    reviewSentiment: 'Positive' | 'Neutral' | 'Negative';
+    sentimentDetails: string;
+    topKeywords: string[];
+    strengths: string[];
+    weaknesses: string[];
+  };
+  competitors: {
+    name: string;
+    price: string;
+    pricingStrategy: string;
+    reviewSentiment: 'Positive' | 'Neutral' | 'Negative';
+    sentimentDetails: string;
+    topKeywords: string[];
+    strengths: string[];
+    weaknesses: string[];
+  }[];
+  marketSummary: string;
+  gapAnalysis: {
+    competitorMissing: string;
+    ourOpportunity: string;
+  }[];
+  suggestedPricingRange: {
+    min: string;
+    max: string;
+    reasoning: string;
+  };
+}
+
+export interface APlusModule {
+  type: string;
+  headline: string;
+  bodyCopy: string;
+  imagePrompt: string;
+  conversionLogic?: string;
+  comparisonData?: any[];
+}
+
+export interface APlusContentResult {
+  targetAudience: string;
+  brandVoice: string;
+  modules: APlusModule[];
+  seoKeywords: string[];
+  designTips: string[];
+  mobileOptimizationTips: string[];
+}
+
+export interface ListingOptions {
+  tone: string;
+  useEmojis: boolean;
+  seoFocus: boolean;
+  inputMethod: 'image' | 'text' | 'url';
+  inputValue: string;
+  imageB64?: string;
+  backImageB64?: string;
+  isAPlusEligible?: boolean;
+  pricingGoal?: string;
+}
+
+export const generateListing = async (
+  platforms: string[],
+  options: ListingOptions
+): Promise<Record<string, ListingResult>> => {
+  console.log("Starting generation...");
+  const results: Record<string, ListingResult> = {};
+
+  // Step 1: Perform Market Research (HSN, GST, Pricing) once for all platforms
+  console.log("Performing market research...");
+  let marketResearch: any = null;
+  try {
+    const researchPrompt = `
+      Perform deep market research for the following product in the Indian marketplace (Amazon.in, Flipkart, Meesho):
+      PRODUCT DATA: ${options.inputValue}
+      INPUT METHOD: ${options.inputMethod}
+      
+      1. Find the most accurate 4, 6, or 8-digit HSN code for this product in India.
+      2. Find the current GST rate (0%, 5%, 12%, 18%, or 28%) for this HSN code.
+      3. CRITICAL: Find the ACTUAL current REALISTIC average price and competitor prices. 
+         - Look for the most common price points (Mid-range).
+         - Identify the lowest price (Aggressive/Budget).
+         - Identify the highest price (Premium).
+         - Do NOT rely on high-end outliers. Focus on what a typical customer pays.
+      
+      Return the data in JSON format:
+      {
+        "hsnCode": "string",
+        "gstRate": "string",
+        "gstReasoning": "string",
+        "marketAveragePrice": "string (e.g., ₹499)",
+        "budgetPrice": "string (e.g., ₹299)",
+        "premiumPrice": "string (e.g., ₹999)",
+        "competitorPrices": ["string"],
+        "productCategory": "string"
+      }
+    `;
+
+    const researchParts: any[] = [{ text: researchPrompt }];
+    if (options.imageB64) {
+      researchParts.push({
+        inlineData: { mimeType: "image/jpeg", data: options.imageB64 }
+      });
+    }
+
+    const researchResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts: researchParts },
+      config: {
+        responseMimeType: "application/json",
+        tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
+    }));
+    marketResearch = JSON.parse(researchResponse.text);
+    console.log("Market research completed:", marketResearch);
+  } catch (error) {
+    console.error("Market research failed, proceeding with estimates:", error);
+    marketResearch = {
+      hsnCode: "Pending Research",
+      gstRate: "18% (Estimated)",
+      gstReasoning: "Standard rate for most consumer goods.",
+      marketAveragePrice: "Estimated based on category",
+      competitorPrices: [],
+      productCategory: "Detected from input"
+    };
+  }
+
+  const promises = platforms.map(async (platform) => {
+    const rules = PLATFORM_RULES[platform];
+    if (!rules) return;
+
+    const prompt = `
+      You are an expert e-commerce strategist and listing optimizer. 
+      Generate a platform-compliant product listing for ${rules.name.toUpperCase()}.
+      IMPORTANT: If the platform is Amazon, strictly target Amazon.in (India).
+
+      CRITICAL: The output MUST NOT sound like it was generated by an AI. 
+      - Use a 100% human-written, natural, and persuasive tone.
+      - Avoid generic AI clichés and repetitive structures.
+      - Ensure the listing is highly SEO optimized for the specific platform's search algorithm.
+      - Integrate relevant keywords naturally to maximize visibility and ranking.
+
+      MARKET RESEARCH DATA (USE THIS):
+      - HSN Code: ${marketResearch.hsnCode}
+      - GST Rate: ${marketResearch.gstRate}
+      - GST Reasoning: ${marketResearch.gstReasoning}
+      - Market Average Price: ${marketResearch.marketAveragePrice}
+      - Budget/Aggressive Price: ${marketResearch.budgetPrice}
+      - Premium/High-end Price: ${marketResearch.premiumPrice}
+      - Product Category: ${marketResearch.productCategory}
+
+      PRICING STRATEGY RULES:
+      - Recommended Price: Should be close to the "Market Average Price".
+      - Aggressive Price: Should be close to the "Budget/Aggressive Price".
+      - Premium Price: Should be close to the "Premium/High-end Price".
+      - DO NOT generate prices significantly higher than the Market Average unless there is a strong justification.
+      - If the user provided a specific pricing goal (${options.pricingGoal || 'Balanced'}), prioritize that.
+
+      PLATFORM CONTEXT: ${rules.name}
+      INPUT DATA: ${options.inputValue}
+      TONE: ${options.tone}
+      EMOJIS: ${options.useEmojis ? 'Allowed' : 'Disabled'}
+      
+      PLATFORM-SPECIFIC RULES:
+      - Title Limit: ${rules.titleLimit || 'N/A'} characters
+      - Description Limit: ${rules.descriptionLimit || 'N/A'} characters
+      - Hard Rules: ${rules.hardRules.join('; ')}
+      - Pricing Logic: ${rules.pricingLogic}
+
+      GLOBAL RULES:
+      ${GLOBAL_RULES.map(rule => `- ${rule}`).join('\n')}
+
+      GENERATION FLOW:
+      1. Generate Title (compliant with limits)
+      2. Generate ONLY these output blocks: ${rules.outputBlocks.join(', ')}. Use standard markdown bullet points. CRITICAL: Each attribute or point within a block MUST be on its own line. Do NOT join multiple attributes with dashes or put them on the same line.
+      3. Generate Description (compliant with limits)
+      4. Generate Pricing Strategy (Aggressive, Balanced, Premium) based on market research.
+      5. Run compliance validator.
+
+      Return the response in JSON format:
+      {
+        "title": "string",
+        "titleVariations": { "short": "string", "medium": "string", "long": "string" },
+        "platformSpecificBlocks": [
+          { "label": "string", "content": "string", "isCopyable": true }
+        ],
+        "description": "string",
+        "pricingStrategy": {
+          "mode": "Live Market Data",
+          "averagePrice": "${marketResearch.marketAveragePrice}",
+          "budgetPrice": "${marketResearch.budgetPrice}",
+          "premiumPrice": "${marketResearch.premiumPrice}",
+          "recommendedPrice": "string",
+          "aggressivePrice": "string",
+          "aggressiveReasoning": "string",
+          "balancedPrice": "string",
+          "balancedReasoning": "string",
+          "premiumPriceValue": "string",
+          "premiumReasoning": "string",
+          "priceBand": "string",
+          "confidence": "High",
+          "whyItHelps": "string",
+          "notes": ["string"]
+        },
+        "complianceWarnings": ["string"],
+        "rankingTips": ["string"],
+        "stepByStepWorkflow": ["string"],
+        "whyThisHelps": "string",
+        "hsnCode": "${marketResearch.hsnCode}",
+        "productCategory": "${marketResearch.productCategory}",
+        "gstRate": "${marketResearch.gstRate}",
+        "gstReasoning": "${marketResearch.gstReasoning}",
+        "keywords": ["string"],
+        "bulletPoints": ["string"],
+        "backendSearchTerms": "string",
+        "seoAnalysis": {
+          "score": 85,
+          "scoreBreakdown": { "title": 20, "bullets": 20, "description": 25, "keywords": 20 },
+          "readabilityScore": "string",
+          "keywordDensity": "string",
+          "targetAudience": "string",
+          "rankingFactors": ["string"],
+          "improvementSteps": ["string"],
+          "competitorInsights": "string",
+          "platformSpecificAdvice": "string",
+          "keywordPerformance": [{ "keyword": "string", "searchVolume": "High", "competition": "Medium" }],
+          "competitorAnalysis": [{ "strategy": "string", "advantage": "string" }]
+        },
+        "extractedFields": [{ "field": "string", "value": "string", "confidence": 0.95, "isInferred": true }],
+        "category": { "main": "string", "sub": "string" },
+        "aPlusContentIdeas": [{ "moduleName": "string", "layoutIdea": "string", "contentPrompt": "string", "suggestedContent": "string" }]
+      }
+    `;
+
+    try {
+      const parts: any[] = [{ text: prompt }];
+      if (options.imageB64) {
+        parts.push({
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: options.imageB64
+          }
+        });
+      }
+      if (options.backImageB64) {
+        parts.push({
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: options.backImageB64
+          }
+        });
+      }
+
+      console.log(`Generating listing for ${platform}...`);
+      
+      const config: any = {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            titleVariations: {
+              type: Type.OBJECT,
+              properties: {
+                short: { type: Type.STRING },
+                medium: { type: Type.STRING },
+                long: { type: Type.STRING }
+              },
+              required: ["short", "medium", "long"]
+            },
+            platformSpecificBlocks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  label: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                  isCopyable: { type: Type.BOOLEAN }
+                },
+                required: ["label", "content", "isCopyable"]
+              }
+            },
+            description: { type: Type.STRING },
+            pricingStrategy: {
+              type: Type.OBJECT,
+              properties: {
+                mode: { type: Type.STRING },
+                averagePrice: { type: Type.STRING },
+                budgetPrice: { type: Type.STRING },
+                premiumPrice: { type: Type.STRING },
+                recommendedPrice: { type: Type.STRING },
+                aggressivePrice: { type: Type.STRING },
+                aggressiveReasoning: { type: Type.STRING },
+                balancedPrice: { type: Type.STRING },
+                balancedReasoning: { type: Type.STRING },
+                premiumPriceValue: { type: Type.STRING },
+                premiumReasoning: { type: Type.STRING },
+                priceBand: { type: Type.STRING },
+                confidence: { type: Type.STRING },
+                whyItHelps: { type: Type.STRING },
+                notes: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ["mode", "averagePrice", "recommendedPrice", "aggressivePrice", "aggressiveReasoning", "balancedPrice", "balancedReasoning", "premiumPriceValue", "premiumReasoning", "priceBand", "confidence", "whyItHelps", "notes"]
+            },
+            complianceWarnings: { type: Type.ARRAY, items: { type: Type.STRING } },
+            rankingTips: { type: Type.ARRAY, items: { type: Type.STRING } },
+            stepByStepWorkflow: { type: Type.ARRAY, items: { type: Type.STRING } },
+            whyThisHelps: { type: Type.STRING },
+            hsnCode: { type: Type.STRING },
+            productCategory: { type: Type.STRING },
+            gstRate: { type: Type.STRING },
+            gstReasoning: { type: Type.STRING },
+            keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+            bulletPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+            backendSearchTerms: { type: Type.STRING },
+            seoAnalysis: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                scoreBreakdown: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.NUMBER },
+                    bullets: { type: Type.NUMBER },
+                    description: { type: Type.NUMBER },
+                    keywords: { type: Type.NUMBER }
+                  },
+                  required: ["title", "bullets", "description", "keywords"]
+                },
+                readabilityScore: { type: Type.STRING },
+                keywordDensity: { type: Type.STRING },
+                targetAudience: { type: Type.STRING },
+                rankingFactors: { type: Type.ARRAY, items: { type: Type.STRING } },
+                improvementSteps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                competitorInsights: { type: Type.STRING },
+                platformSpecificAdvice: { type: Type.STRING },
+                keywordPerformance: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      keyword: { type: Type.STRING },
+                      searchVolume: { type: Type.STRING },
+                      competition: { type: Type.STRING }
+                    },
+                    required: ["keyword", "searchVolume", "competition"]
+                  }
+                },
+                competitorAnalysis: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      strategy: { type: Type.STRING },
+                      advantage: { type: Type.STRING }
+                    },
+                    required: ["strategy", "advantage"]
+                  }
+                }
+              },
+                required: ["score", "scoreBreakdown", "readabilityScore", "keywordDensity", "targetAudience", "rankingFactors", "improvementSteps", "competitorInsights", "platformSpecificAdvice", "keywordPerformance", "competitorAnalysis"]
+            },
+            extractedFields: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  field: { type: Type.STRING },
+                  value: { type: Type.STRING },
+                  confidence: { type: Type.NUMBER },
+                  isInferred: { type: Type.BOOLEAN }
+                },
+                required: ["field", "value", "confidence", "isInferred"]
+              }
+            },
+            category: {
+              type: Type.OBJECT,
+              properties: {
+                main: { type: Type.STRING },
+                sub: { type: Type.STRING }
+              },
+              required: ["main", "sub"]
+            },
+            aPlusContentIdeas: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  moduleName: { type: Type.STRING },
+                  layoutIdea: { type: Type.STRING },
+                  contentPrompt: { type: Type.STRING },
+                  suggestedContent: { type: Type.STRING }
+                },
+                required: ["moduleName", "layoutIdea", "contentPrompt", "suggestedContent"]
+              }
+            }
+          },
+          required: ["title", "titleVariations", "platformSpecificBlocks", "description", "pricingStrategy", "complianceWarnings", "rankingTips", "stepByStepWorkflow", "whyThisHelps", "extractedFields", "category", "keywords", "bulletPoints", "backendSearchTerms", "seoAnalysis", "hsnCode", "productCategory", "gstRate", "gstReasoning"]
+        }
+      };
+
+      const response = await withRetry(() => ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts },
+        config
+      }));
+
+      const result = JSON.parse(response.text);
+      results[platform] = result;
+    } catch (error) {
+      console.error(`Error generating listing for ${platform}:`, error);
+      throw error;
+    }
+  });
+
+  await Promise.all(promises);
+
+  return results;
+};
+
+
+export interface VirtualTryOnOptions {
+  mode: 'apparel' | 'product' | 'mockup' | 'reimagine';
+  productImageB64: string;
+  modelImageB64?: string;
+  designImageB64?: string; // For mockup mode
+  category: string;
+  pose?: string;
+  background?: string;
+  lighting?: string;
+  expression?: string;
+  focalLength?: string;
+  environmentEffects?: string;
+  realismBoost?: boolean;
+  material?: string;
+  transformation?: string;
+  cameraAngle?: string;
+  backgroundImageB64?: string;
+}
+
+export const generateVirtualTryOn = async (options: VirtualTryOnOptions): Promise<string> => {
+  let prompt = "";
+
+  if (options.mode === 'apparel') {
+    prompt = `
+      TASK: Professional AI Apparel Photoshoot (Model + Clothing).
+      INSTRUCTIONS:
+      1. Take the provided apparel item (garment) and realistically "wear" it on the human model.
+      2. Extract the garment details (texture, fabric folds, color) and conform them to the model's body shape and pose.
+      3. Pose/Shot Type: ${options.pose || 'Natural standing'}
+      4. Model Expression: ${options.expression || 'Neutral/Professional'}
+      5. Lighting: ${options.lighting || 'Studio Soft Light'}
+      6. Focal Length: ${options.focalLength || '50mm'}
+      7. Background: ${options.backgroundImageB64 ? 'Use the provided background image as the environment.' : (options.background || 'Professional Studio')}
+      8. Material/Reflections: ${options.material || 'Natural'}
+      9. Camera Angle: ${options.cameraAngle || 'Eye-Level'}
+      10. Ensure "Fabric Simulation" is active: the garment should follow the model's movement and gravity naturally.
+      ${options.realismBoost ? '11. REALISM BOOST: Enhance skin pores, fabric micro-textures, and high-fidelity rendering.' : ''}
+    `;
+  } else if (options.mode === 'product') {
+    prompt = `
+      TASK: Professional AI Product Photography Studio.
+      INSTRUCTIONS:
+      1. Place the provided product on a ${options.backgroundImageB64 ? 'the provided background image' : (options.background || 'Marble/Wood surface')}.
+      2. Environment Effects: ${options.environmentEffects || 'Natural Shadows'}
+      3. Lighting Quality: ${options.lighting || 'Cinematic'}
+      4. Material/Reflections: ${options.material || 'Natural'}
+      5. Camera Angle: ${options.cameraAngle || 'Eye-Level'}
+      6. Artistic Transformation: ${options.transformation || 'None'}
+      7. Time of Day: ${options.background?.includes('Outdoor') ? 'Golden Hour' : 'Studio Controlled'}
+      8. Ensure realistic shadows and reflections on the surface.
+      ${options.realismBoost ? '9. REALISM BOOST: Enhance material textures (metal, glass, wood) and high-fidelity rendering.' : ''}
+    `;
+  } else if (options.mode === 'mockup') {
+    prompt = `
+      TASK: AI Design & Mockup Studio.
+      INSTRUCTIONS:
+      1. Take the provided graphic design and place it on the blank mockup garment.
+      2. WRINKLE CONFORM: The design MUST follow the fabric's folds, wrinkles, and shadows perfectly.
+      3. Placement: Scale and rotate the design naturally on the chest/center.
+      4. Lighting: Match the design's lighting to the mockup's environment.
+      5. Background: ${options.backgroundImageB64 ? 'Use the provided background image' : (options.background || 'Clean Studio')}
+    `;
+  } else {
+    prompt = `
+      TASK: AI Reimagine (Magic Swap).
+      INSTRUCTIONS:
+      1. Use the reference photo and swap ${options.background ? 'the background to ' + options.background : 'the model/outfit'}.
+      2. Keep the original pose and composition exactly the same.
+      3. Ensure seamless blending between the swapped elements and the original structure.
+      4. Background: ${options.backgroundImageB64 ? 'Use the provided background image' : (options.background || 'Clean Studio')}
+    `;
+  }
+
+  prompt += `\nOUTPUT: Return ONLY the high-fidelity processed image.`;
+
+  try {
+    const parts: any[] = [
+      { text: prompt },
+      {
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.productImageB64
+        }
+      }
+    ];
+
+    if (options.modelImageB64) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.modelImageB64
+        }
+      });
+    }
+
+    if (options.designImageB64) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.designImageB64
+        }
+      });
+    }
+
+    if (options.backgroundImageB64) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.backgroundImageB64
+        }
+      });
+    }
+
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: { parts },
+    }));
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image data returned from Gemini");
+  } catch (error) {
+    console.error("Virtual Try-On failed:", error);
+    throw error;
+  }
+};
+
+export const generateBackgroundImage = async (prompt: string): Promise<string> => {
+  const fullPrompt = `Generate a high-quality, professional photoshoot background image. 
+  Description: ${prompt}
+  Style: Photorealistic, high resolution, professional studio lighting.
+  No people, no products, just the environment.`;
+
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: {
+        parts: [{ text: fullPrompt }]
+      }
+    }));
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return part.inlineData.data;
+      }
+    }
+    throw new Error("No image generated in response");
+  } catch (error) {
+    console.error("Background generation failed:", error);
+    throw error;
+  }
+};
+
+export const analyzeProductImage = async (imageB64: string): Promise<string> => {
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: {
+        parts: [
+          { text: "Analyze this product image and provide a concise, professional description (max 10 words) for an e-commerce listing. Focus on the item type, color, and key features." },
+          { inlineData: { mimeType: "image/jpeg", data: imageB64 } }
+        ]
+      }
+    }));
+
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "Product analyzed";
+  } catch (error) {
+    console.error("Analysis failed:", error);
+    return "Product analyzed";
+  }
+};
+
+export const suggestPhotoshootSettings = async (imageB64: string, mode: string): Promise<any> => {
+  const prompt = `
+    Analyze this product image and suggest the best professional photoshoot settings for ${mode} mode.
+    Return a JSON object with these fields:
+    - background: A descriptive background name (e.g., "Minimalist Loft", "Luxury Marble Studio")
+    - lighting: One of ["Studio Soft", "Cinematic", "Golden Hour", "Neon"]
+    - pose: (Only if mode is apparel) A professional pose name
+    - cameraAngle: One of ["Eye-Level", "Top-Down (Flat Lay)", "Hero Shot (Low Angle)", "45-Degree E-commerce"]
+    - material: One of ["Matte", "Glossy", "Metallic", "Glass"]
+    - colorGrade: A cinematic color grade name
+    - focalLength: A camera lens focal length (e.g., "35mm", "50mm", "85mm")
+    - environmentEffects: Suggested effects (e.g., "Soft Shadows", "Subtle Reflections")
+    - bgPrompt: A detailed prompt for an AI background generator that matches the product's vibe.
+  `;
+
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: "image/jpeg", data: imageB64 } }
+        ]
+      },
+      config: { responseMimeType: "application/json" }
+    }));
+
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("AI Suggestion failed:", error);
+    throw error;
+  }
+};
+
+export const generateProductStudioImage = async (params: any): Promise<string> => {
+  const promptParts = generateProductPrompt(params);
+  
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: { parts: promptParts },
+    }));
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image data returned from Gemini");
+  } catch (error) {
+    console.error("Product Studio Generation failed:", error);
+    throw error;
+  }
+};
+
+export const removeBackground = async (imageB64: string): Promise<string> => {
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: imageB64,
+              mimeType: 'image/jpeg',
+            },
+          },
+          {
+            text: 'Remove the background of this image and replace it with a solid, pure white background. Keep only the main product in the center. The output should be just the edited image.',
+          },
+        ],
+      },
+    }));
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image data returned from Gemini");
+  } catch (error) {
+    console.error('Error removing background:', error);
+    throw error;
+  }
+};
+
+export interface LowShippingResult {
+  image: string;
+  advice: {
+    recommendedDimensions: { l: number; b: number; h: number };
+    weightSlab: string;
+    packagingTip: string;
+    meeshoSecretTrick: string;
+  };
+}
+
+export const processLowShippingImage = async (imageB64: string): Promise<LowShippingResult> => {
+  try {
+    const imagePrompt = `
+      Role: You are an advanced E-commerce Image Processing AI.
+      Task: Process the uploaded product image:
+      1. Remove background (Pure White #FFFFFF).
+      2. Center the product.
+      3. Add 40% Smart Padding (make the product look small in the frame).
+      4. Output: 1:1 Square Aspect Ratio.
+      OUTPUT: Return ONLY the processed high-fidelity image.
+    `;
+
+    const advicePrompt = `
+      Role: You are an advanced E-commerce Shipping Optimization Expert for Meesho, Amazon, and Flipkart.
+      Based on the product in the image, provide optimized shipping data for the Meesho/Amazon seller panel.
+      - Recommended Dimensions (L, B, H in cm) that are safe but lower the volumetric weight.
+      - Weight Slab advice (e.g., "Keep under 500g").
+      - A specific packaging tip to reduce weight.
+      - A "Secret Trick" for Meesho sellers to avoid weight penalties.
+
+      Return the response in JSON format:
+      {
+        "advice": {
+          "recommendedDimensions": { "l": 15, "b": 12, "h": 3 },
+          "weightSlab": "string",
+          "packagingTip": "string",
+          "meeshoSecretTrick": "string"
+        }
+      }
+    `;
+
+    // Run both calls in parallel for better performance
+    const [imageResponse, adviceResponse] = await Promise.all([
+      withRetry(() => ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
+            { text: imagePrompt },
+          ],
+        },
+      })),
+      withRetry(() => ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
+            { text: advicePrompt },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json"
+        }
+      }))
+    ]);
+
+    let processedImage = "";
+    for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        processedImage = `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+
+    const adviceResult = JSON.parse(adviceResponse.text);
+
+    return {
+      image: processedImage || `data:image/png;base64,${imageB64}`,
+      advice: adviceResult.advice
+    };
+  } catch (error) {
+    console.error('Error processing low shipping image:', error);
+    throw error;
+  }
+};
+
+export const regenerateSection = async (
+  platform: string,
+  section: 'title' | 'bulletPoints' | 'description' | 'keywords',
+  options: ListingOptions
+): Promise<any> => {
+  const prompt = `
+    Regenerate the ${section} for a product listing on ${platform}.
+    
+    Current Product Info: ${options.inputValue}
+    Tone: ${options.tone}
+    Include Emojis: ${options.useEmojis ? 'Yes' : 'No'}
+    
+    CRITICAL: The output MUST look like it was written by a human and NOT an AI.
+    - Avoid AI clichés and generic phrases.
+    - Use natural, direct, and persuasive language.
+    - Ensure the content is SEO optimized for ${platform}.
+    
+    IMPORTANT: All information provided must use simple English words.
+    ${section === 'keywords' ? 'CRITICAL: Provide a comprehensive list of 15-20 highly accurate, high-volume search keywords relevant to the product and platform.' : ''}
+    ${section === 'bulletPoints' ? 'CRITICAL: Format information professionally using bullet points. When using bullet points, ALWAYS use standard markdown bullet points (e.g., `- Point 1`) and ensure each point is on a new line. Do NOT use custom symbols like arrows.' : ''}
+    
+    Return ONLY the regenerated ${section} in JSON format:
+    {
+      "${section}": ... (string for title/description, array for bulletPoints/keywords)
+    }
+  `;
+
+  try {
+    const parts: any[] = [{ text: prompt }];
+    if (options.imageB64) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.imageB64
+        }
+      });
+    }
+    if (options.backImageB64) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: options.backImageB64
+        }
+      });
+    }
+
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts },
+      config: {
+        responseMimeType: "application/json",
+      },
+    }));
+
+    const result = JSON.parse(response.text || "{}");
+    const data = result[section];
+    
+    if ((section === 'keywords' || section === 'bulletPoints') && typeof data === 'string') {
+      return data.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`Error regenerating ${section} for ${platform}:`, error);
+    throw error;
+  }
+};
+
+export const analyzeCompetitor = async (
+  platform: string,
+  productUrl: string
+): Promise<CompetitorAnalysisResult> => {
+  const prompt = `
+    Perform a comprehensive competitor analysis for the product at this URL: ${productUrl}
+    on the ${platform} marketplace.
+    IMPORTANT: If the platform is Amazon, strictly target Amazon.in (India) and NOT Amazon.com. Use live search data from amazon.in for this analysis.
+    
+    CRITICAL INSTRUCTION: You have access to the Google Search tool. You MUST use it to search the web and find the ACTUAL current price of the product at the provided URL and its top competitors. Do NOT hallucinate or guess the prices. If you cannot find the exact price after searching, state 'Not available' instead of guessing.
+
+    1. First, analyze the SPECIFIC product at the provided URL (${productUrl}).
+    2. Then, identify the top 3 competitors for this product.
+    
+    For the target product AND each competitor, provide:
+    1. Name of the product.
+    2. Current price.
+    3. Pricing strategy (e.g., Premium, Budget, Value-based).
+    4. Customer review sentiment (Positive/Neutral/Negative) and a brief detail.
+    5. Top 5 performing keywords.
+    6. Key strengths and weaknesses.
+    
+    Also provide a brief market summary of the competition for this product category on ${platform}.
+    Perform a gap analysis identifying what competitors are missing that the user's product can highlight.
+    Finally, suggest a competitive pricing range for the user's product based on this analysis.
+    
+    IMPORTANT: All information provided must look like it was written by a human and use simple English words.
+    Format information professionally using bullet points or numbered lists where appropriate to improve readability and structure.
+    
+    Return the data in the following JSON format:
+    {
+      "targetProduct": {
+        "name": "string",
+        "price": "string",
+        "pricingStrategy": "string",
+        "reviewSentiment": "Positive | Neutral | Negative",
+        "sentimentDetails": "string",
+        "topKeywords": ["string"],
+        "strengths": ["string"],
+        "weaknesses": ["string"]
+      },
+      "competitors": [
+        {
+          "name": "string",
+          "price": "string",
+          "pricingStrategy": "string",
+          "reviewSentiment": "Positive | Neutral | Negative",
+          "sentimentDetails": "string",
+          "topKeywords": ["string"],
+          "strengths": ["string"],
+          "weaknesses": ["string"]
+        }
+      ],
+      "marketSummary": "string",
+      "gapAnalysis": [
+        {
+          "competitorMissing": "string",
+          "ourOpportunity": "string"
+        }
+      ],
+      "suggestedPricingRange": {
+        "min": "string",
+        "max": "string",
+        "reasoning": "string"
+      }
+    }
+  `;
+
+  try {
+    console.log(`Starting competitor analysis for ${platform} with URL: ${productUrl}`);
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts: [{ text: prompt }] },
+      config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          targetProduct: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              price: { type: Type.STRING },
+              pricingStrategy: { type: Type.STRING },
+              reviewSentiment: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative"] },
+              sentimentDetails: { type: Type.STRING },
+              topKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+              strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+              weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["name", "price", "pricingStrategy", "reviewSentiment", "sentimentDetails", "topKeywords", "strengths", "weaknesses"]
+          },
+          competitors: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                price: { type: Type.STRING },
+                pricingStrategy: { type: Type.STRING },
+                reviewSentiment: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative"] },
+                sentimentDetails: { type: Type.STRING },
+                topKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+                strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ["name", "price", "pricingStrategy", "reviewSentiment", "sentimentDetails", "topKeywords", "strengths", "weaknesses"]
+            }
+          },
+          marketSummary: { type: Type.STRING },
+          gapAnalysis: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                competitorMissing: { type: Type.STRING },
+                ourOpportunity: { type: Type.STRING }
+              },
+              required: ["competitorMissing", "ourOpportunity"]
+            }
+          },
+          suggestedPricingRange: {
+            type: Type.OBJECT,
+            properties: {
+              min: { type: Type.STRING },
+              max: { type: Type.STRING },
+              reasoning: { type: Type.STRING }
+            },
+            required: ["min", "max", "reasoning"]
+          }
+        },
+        required: ["targetProduct", "competitors", "marketSummary", "gapAnalysis", "suggestedPricingRange"]
+      },
+      tools: [{ googleSearch: {} }],
+    },
+  }));
+
+  const text = response.text || "{}";
+  console.log("Competitor Analysis Raw Response:", text);
+  
+  // Clean up potential markdown blocks if present (though responseMimeType should prevent them)
+  const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim();
+  const result = JSON.parse(cleanJson);
+  
+  // Ensure the result has the required structure to prevent crashes
+  if (!result.targetProduct) {
+    result.targetProduct = {
+      name: "N/A",
+      price: "N/A",
+      pricingStrategy: "N/A",
+      reviewSentiment: "Neutral",
+      sentimentDetails: "N/A",
+      topKeywords: [],
+      strengths: [],
+      weaknesses: []
+    };
+  }
+  if (!result.competitors) result.competitors = [];
+  if (!result.gapAnalysis) result.gapAnalysis = [];
+  if (!result.suggestedPricingRange) {
+    result.suggestedPricingRange = { min: "N/A", max: "N/A", reasoning: "N/A" };
+  }
+
+  return result;
+} catch (error) {
+    console.error(`Error analyzing competitor for ${platform}:`, error);
+    throw error;
+  }
+};
+
+export const generateAPlusContent = async (productDetails: string, imageB64?: string): Promise<APlusContentResult> => {
+  const contents: any[] = [
+    {
+      text: `
+    You are an expert Amazon A+ Content designer and copywriter specializing in high-conversion EBC (Enhanced Brand Content) for the Indian marketplace (Amazon.in).
+    Create a comprehensive, "Advanced Version" of A+ Content strategy for the following product:
+    
+    Product Details: ${productDetails}
+    
+    Your goal is to create a visually stunning and persuasive layout that includes:
+    1. A detailed Target Audience analysis (who they are, what they care about).
+    2. A defined Brand Voice (tone, style, and emotional connection).
+    3. 5-7 distinct A+ Content Modules (e.g., Standard Image Header, Standard Four Image & Text, Standard Comparison Chart, Standard Single Left Image, etc.).
+    4. For each module, provide:
+       - Module Type (e.g., "Standard Image Header")
+       - Headline (Catchy and benefit-driven)
+       - Body Copy (Persuasive, using standard markdown bullet points where appropriate)
+       - Image Prompt (Detailed description for an AI image generator)
+       - Conversion Logic (Why this module helps sell the product)
+       - ComparisonData (If the module is a comparison chart, provide an array of objects with "productName", "feature1", "feature2", etc.)
+    5. A list of SEO-optimized keywords to include in the alt-text.
+    6. Professional design and layout tips to maximize conversion, specifically for mobile users.
+
+    CRITICAL: Use "Advanced" modules like comparison charts and technical specification grids.
+    The content must be persuasive, highlighting benefits over features.
+    
+    IMPORTANT: Use simple Indian English words that are easy to understand. Avoid heavy jargon. 
+    The content MUST look like it was written by a real person, not a machine. 
+    Use a warm, helpful, and honest tone that builds trust with Indian buyers.
+    Focus on "Value for Money", "Durability", and "Daily Use" benefits.
+    Format information professionally using bullet points or numbered lists where appropriate to improve readability and structure.
+
+    Return the response in JSON format:
+    {
+      "targetAudience": "...",
+      "brandVoice": "...",
+      "modules": [
+        { 
+          "type": "...", 
+          "headline": "...", 
+          "bodyCopy": "...", 
+          "imagePrompt": "...", 
+          "conversionLogic": "...",
+          "comparisonData": [ { "productName": "...", "feature1": "...", "feature2": "..." } ]
+        }
+      ],
+      "seoKeywords": ["..."],
+      "designTips": ["..."],
+      "mobileOptimizationTips": ["..."]
+    }
+  `
+    }
+  ];
+
+  if (imageB64) {
+    contents.push({
+      inlineData: {
+        mimeType: "image/jpeg",
+        data: imageB64
+      }
+    });
+    contents[0].text += "\n\nI have also provided an image of the product. Please use it to better understand the product's features, design, and branding to create more accurate and visually aligned A+ content.";
+  }
+
+  try {
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { parts: contents },
+      config: { responseMimeType: "application/json" }
+    }));
+
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error('Error generating A+ Content:', error);
+    throw error;
+  }
+};

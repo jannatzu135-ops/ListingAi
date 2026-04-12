@@ -1,0 +1,5 @@
+{
+  "name": "ListingAI",
+  "description": "Multi-platform e-commerce listing generator with platform-aware rules and pricing strategies.",
+  "requestFramePermissions": []
+}

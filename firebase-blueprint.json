@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "displayName": { "type": "string", "description": "User's display name" },
+        "photoURL": { "type": "string", "description": "User's profile photo URL" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
+        "planType": { "type": "string", "enum": ["trial", "monthly", "yearly", "6month", "pro_max", "none"], "description": "Current subscription plan" },
+        "expiryDate": { "type": "string", "description": "Plan expiration date (ISO string or 'never')" },
+        "hasUsedTrial": { "type": "boolean", "description": "Whether the user has already used their free trial" },
+        "hasVirtualTryOnAddon": { "type": "boolean", "description": "Whether the user has purchased the AI Virtual Try-On add-on" },
+        "hasLowShippingAddon": { "type": "boolean", "description": "Whether the user has purchased the Low Shipping add-on" },
+        "dailyImageCount": { "type": "number", "description": "Number of images generated today" },
+        "lastImageGenerationDate": { "type": "string", "description": "The date of last image generation (YYYY-MM-DD)" },
+        "dailyListingCount": { "type": "number", "description": "Number of listings generated today" },
+        "lastListingGenerationDate": { "type": "string", "description": "The date of last listing generation (YYYY-MM-DD)" },
+        "dailyWhiteBgCount": { "type": "number", "description": "Number of white background images today" },
+        "lastWhiteBgDate": { "type": "string", "description": "The date of last white background generation (YYYY-MM-DD)" },
+        "dailyCompetitorCount": { "type": "number", "description": "Number of competitor analyses today" },
+        "lastCompetitorDate": { "type": "string", "description": "The date of last competitor analysis (YYYY-MM-DD)" },
+        "dailyLowShippingCount": { "type": "number", "description": "Number of low shipping images today" },
+        "lastLowShippingDate": { "type": "string", "description": "The date of last low shipping generation (YYYY-MM-DD)" },
+        "dailyAPlusCount": { "type": "number", "description": "Number of A+ content generations today" },
+        "lastAPlusDate": { "type": "string", "description": "The date of last A+ content generation (YYYY-MM-DD)" }
+      },
+      "required": ["uid", "email", "planType", "hasUsedTrial"]
+    },
+    "Listing": {
+      "title": "Listing",
+      "description": "A generated product listing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique listing ID" },
+        "userId": { "type": "string", "description": "Owner's UID" },
+        "productName": { "type": "string", "description": "Name of the product" },
+        "platform": { "type": "string", "enum": ["Amazon", "Flipkart", "Meesho"], "description": "Target platform" },
+        "generatedContent": { "type": "string", "description": "The AI-generated listing content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Generation timestamp" }
+      },
+      "required": ["id", "userId", "productName", "platform", "generatedContent"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user profiles"
+    },
+    "/settings/{settingId}": {
+      "schema": {
+        "title": "Setting",
+        "type": "object",
+        "properties": {
+          "accessCode": { "type": "string" }
+        }
+      },
+      "description": "Global application settings"
+    },
+    "/listings/{listingId}": {
+      "schema": "Listing",
+      "description": "All generated product listings"
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "title": "Notification",
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "target": { "type": "string", "enum": ["all", "new", "expired"] },
+          "createdAt": { "type": "string" },
+          "active": { "type": "boolean" }
+        }
+      },
+      "description": "Admin broadcast notifications"
+    },
+    "/daily_stats/{date}": {
+      "schema": {
+        "title": "DailyStats",
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "activeUsers": { "type": "number" },
+          "listingCount": { "type": "number" },
+          "photoshootCount": { "type": "number" },
+          "shippingCount": { "type": "number" }
+        }
+      },
+      "description": "Aggregated daily usage statistics"
+    }
+  }
+}

@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          request.auth.token.email == "jannatzu135@gmail.com" ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return (!('uid' in data) || data.uid is string) &&
+             (!('email' in data) || (data.email is string && isValidEmail(data.email))) &&
+             (!('planType' in data) || data.planType in ['trial', 'monthly', 'yearly', '6month', 'pro_max', 'none']) &&
+             (!('hasUsedTrial' in data) || data.hasUsedTrial is bool) &&
+             (!('role' in data) || data.role in ['admin', 'user']) &&
+             (!('isBlocked' in data) || data.isBlocked is bool) &&
+             (!('hasVirtualTryOnAddon' in data) || data.hasVirtualTryOnAddon is bool) &&
+             (!('hasLowShippingAddon' in data) || data.hasLowShippingAddon is bool) &&
+             (!('dailyImageCount' in data) || data.dailyImageCount is number) &&
+             (!('lastImageGenerationDate' in data) || data.lastImageGenerationDate is string) &&
+             (!('dailyListingCount' in data) || data.dailyListingCount is number) &&
+             (!('lastListingGenerationDate' in data) || data.lastListingGenerationDate is string) &&
+             (!('dailyWhiteBgCount' in data) || data.dailyWhiteBgCount is number) &&
+             (!('lastWhiteBgDate' in data) || data.lastWhiteBgDate is string) &&
+             (!('dailyCompetitorCount' in data) || data.dailyCompetitorCount is number) &&
+             (!('lastCompetitorDate' in data) || data.lastCompetitorDate is string) &&
+             (!('dailyLowShippingCount' in data) || data.dailyLowShippingCount is number) &&
+             (!('lastLowShippingDate' in data) || data.lastLowShippingDate is string) &&
+             (!('dailyAPlusCount' in data) || data.dailyAPlusCount is number) &&
+             (!('lastAPlusDate' in data) || data.lastAPlusDate is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidListing(data) {
+      return hasRequiredFields(['id', 'userId', 'productName', 'platform', 'generatedContent']) &&
+             hasOnlyAllowedFields(['id', 'userId', 'productName', 'platform', 'generatedContent', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.productName is string && data.productName.size() > 0 && data.productName.size() < 200 &&
+             data.platform in ['Amazon', 'Flipkart', 'Meesho'] &&
+             data.generatedContent is string && data.generatedContent.size() > 0 && data.generatedContent.size() < 10000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && 
+                    hasRequiredFields(['uid', 'email']) &&
+                    isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin()) && 
+                    (isAdmin() || (
+                      isValidUser(request.resource.data) &&
+                      request.resource.data.get('role', 'user') == resource.data.get('role', 'user') &&
+                      request.resource.data.get('isBlocked', false) == resource.data.get('isBlocked', false) &&
+                      request.resource.data.get('hasVirtualTryOnAddon', false) == resource.data.get('hasVirtualTryOnAddon', false) &&
+                      request.resource.data.get('hasLowShippingAddon', false) == resource.data.get('hasLowShippingAddon', false) &&
+                      (
+                        // Normal case: no changes to plan
+                        (request.resource.data.get('planType', 'none') == resource.data.get('planType', 'none') &&
+                         request.resource.data.get('expiryDate', '') == resource.data.get('expiryDate', '') &&
+                         request.resource.data.get('hasUsedTrial', false) == resource.data.get('hasUsedTrial', false)) ||
+                        // Self-activation of trial
+                        (resource.data.get('hasUsedTrial', false) == false && 
+                         request.resource.data.get('hasUsedTrial', true) == true &&
+                         request.resource.data.get('planType', '') == 'trial' &&
+                         request.resource.data.get('expiryDate', '') != '')
+                      ) &&
+                      // Allow updating image and listing counts
+                      (!('dailyImageCount' in request.resource.data) || request.resource.data.dailyImageCount >= 0) &&
+                      (!('dailyListingCount' in request.resource.data) || request.resource.data.dailyListingCount >= 0) &&
+                      (!('dailyWhiteBgCount' in request.resource.data) || request.resource.data.dailyWhiteBgCount >= 0) &&
+                      (!('dailyCompetitorCount' in request.resource.data) || request.resource.data.dailyCompetitorCount >= 0) &&
+                      (!('dailyLowShippingCount' in request.resource.data) || request.resource.data.dailyLowShippingCount >= 0) &&
+                      (!('dailyAPlusCount' in request.resource.data) || request.resource.data.dailyAPlusCount >= 0)
+                    ));
+      allow delete: if isAdmin();
+    }
+
+    match /listings/{listingId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && isValidListing(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && isValidListing(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /settings/{settingId} {
+      allow read: if true; // Allow anyone to read settings to check access code
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /daily_stats/{date} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+    }
+  }
+}
