@@ -392,17 +392,9 @@ export default function App() {
     }
   }, [isAuthorized, currentAccessCode]);
 
-  // Domain Authorization Check
+  // Domain Authorization Check (Disabled for deployment)
   useEffect(() => {
-    const hostname = window.location.hostname.toLowerCase();
-    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-    const isOriginal = hostname.includes(APP_ID.toLowerCase());
-    const isGitHub = hostname.includes('github.io') || hostname.includes('jannatzu135-ops');
-    
-    if (!isLocal && !isOriginal && !isGitHub) {
-      console.error("Domain not authorized:", hostname);
-      setIsDomainAuthorized(false);
-    }
+    setIsDomainAuthorized(true);
   }, []);
 
   // Load history from localStorage
