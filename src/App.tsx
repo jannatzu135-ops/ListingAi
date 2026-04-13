@@ -148,7 +148,14 @@ export default function App() {
     direction: "asc" | "desc";
   }>({ field: "searchVolume", direction: "desc" });
 
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => localStorage.getItem("isAuthorized") === "true");
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("isAuthorized") === "true";
+    } catch (e) {
+      console.warn("LocalStorage not accessible:", e);
+      return false;
+    }
+  });
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -218,7 +225,12 @@ export default function App() {
       // Show the latest one if it hasn't been shown/dismissed
       if (relevant.length > 0) {
         const latest = relevant[0];
-        const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
+        let dismissed = [];
+        try {
+          dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
+        } catch (e) {
+          console.warn("LocalStorage read failed:", e);
+        }
         if (!dismissed.includes(latest.id)) {
           setShowNotification(latest);
         }
@@ -382,12 +394,22 @@ export default function App() {
   // Robust Logout Logic
   useEffect(() => {
     if (isAuthorized && currentAccessCode) {
-      const usedCode = localStorage.getItem("usedAccessCode");
+      let usedCode = null;
+      try {
+        usedCode = localStorage.getItem("usedAccessCode");
+      } catch (e) {
+        console.warn("LocalStorage read failed:", e);
+      }
+      
       if (!usedCode || usedCode !== currentAccessCode) {
         console.log("Access code mismatch detected. Logging out...", { usedCode, currentAccessCode });
         setIsAuthorized(false);
-        localStorage.removeItem("isAuthorized");
-        localStorage.removeItem("usedAccessCode");
+        try {
+          localStorage.removeItem("isAuthorized");
+          localStorage.removeItem("usedAccessCode");
+        } catch (e) {
+          console.warn("LocalStorage remove failed:", e);
+        }
       }
     }
   }, [isAuthorized, currentAccessCode]);
@@ -1189,7 +1211,11 @@ Timestamp: ${new Date().toISOString()}
             </button>
             <button
               onClick={() => {
-                localStorage.removeItem("isAuthorized");
+                try {
+                  localStorage.removeItem("isAuthorized");
+                } catch (e) {
+                  console.warn("LocalStorage remove failed:", e);
+                }
                 setIsAuthorized(false);
               }}
               className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
@@ -1380,8 +1406,12 @@ Timestamp: ${new Date().toISOString()}
                   <h4 className="font-semibold text-neutral-900">Announcement</h4>
                   <button 
                     onClick={() => {
-                      const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
-                      localStorage.setItem('dismissedNotifications', JSON.stringify([...dismissed, showNotification.id]));
+                      try {
+                        const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
+                        localStorage.setItem('dismissedNotifications', JSON.stringify([...dismissed, showNotification.id]));
+                      } catch (e) {
+                        console.warn("LocalStorage update failed:", e);
+                      }
                       setShowNotification(null);
                     }}
                     className="p-1 hover:bg-neutral-100 rounded-lg transition-colors"

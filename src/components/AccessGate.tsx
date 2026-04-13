@@ -64,8 +64,12 @@ export default function AccessGate({ onAuthorized }: AccessGateProps) {
         setIsSuccess(true);
         setError(false);
         setTimeout(() => {
-          localStorage.setItem("isAuthorized", "true");
-          localStorage.setItem("usedAccessCode", code);
+          try {
+            localStorage.setItem("isAuthorized", "true");
+            localStorage.setItem("usedAccessCode", code);
+          } catch (e) {
+            console.warn("LocalStorage set failed:", e);
+          }
           onAuthorized();
         }, 1200);
       } else {
