@@ -2,8 +2,24 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { PLATFORM_RULES, GLOBAL_RULES } from "../constants/platformRules";
 import { generateProductPrompt } from "./productPromptService";
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-const ai = new GoogleGenAI({ apiKey });
+const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
+
+const ai = new GoogleGenAI(apiKey || "MISSING_API_KEY");
+
+/**
+ * Helper function to check if AI is configured
+ */
+export const isAiConfigured = () => !!apiKey && apiKey !== "" && apiKey !== "MISSING_API_KEY";
+
+/**
+ * Helper function to get the generative model with a check for the API key
+ */
+const getModel = (modelName: string = "gemini-2.0-flash") => {
+  if (!isAiConfigured()) {
+    throw new Error("Gemini API Key is missing. If you are on GitHub Pages, please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets. If you are in AI Studio, please ensure the GEMINI_API_KEY is set in the environment.");
+  }
+  return ai.getGenerativeModel({ model: modelName });
+};
 
 /**
  * Helper function to retry API calls with exponential backoff
@@ -346,6 +362,9 @@ export const generateListing = async (
   platforms: string[],
   options: ListingOptions
 ): Promise<Record<string, ListingResult>> => {
+  if (!isAiConfigured()) {
+    throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets to enable AI generation.");
+  }
   console.log("Starting generation...");
   const results: Record<string, ListingResult> = {};
 

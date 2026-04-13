@@ -31,6 +31,7 @@ import {
   type CompetitorAnalysisResult,
   type MarketIntelligenceResult,
   type APlusContentResult,
+  isAiConfigured,
 } from "./services/geminiService";
 
 import { auth, db, handleFirestoreError, OperationType } from "./firebase";
@@ -1264,6 +1265,19 @@ Timestamp: ${new Date().toISOString()}
         />
 
         <main className="mx-auto p-6 lg:p-10 transition-all duration-500 max-w-[1600px]">
+          {!isAiConfigured() && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-4 text-amber-800 shadow-sm">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold">Gemini API Key Missing</p>
+                <p className="text-xs font-medium opacity-80">
+                  AI features are disabled. If you are on GitHub Pages, please add <code className="bg-amber-100 px-1 rounded">VITE_GEMINI_API_KEY</code> to your GitHub Repository Secrets.
+                </p>
+              </div>
+            </div>
+          )}
           <ErrorDisplay error={error} />
           
           <Suspense fallback={
