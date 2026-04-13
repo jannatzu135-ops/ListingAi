@@ -439,7 +439,7 @@ export const generateListing = async (
       - Market Average (Median): ₹${marketResearch.marketAveragePrice}
       - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice}
       - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice}
-      - Competitor Benchmarks: ${marketResearch.competitorPrices.map((p: any) => "₹" + p).join(", ")}
+      - Competitor Benchmarks: ${(marketResearch.competitorPrices || []).map((p: any) => "₹" + p).join(", ")}
 
       PRICING STRATEGY CALCULATION RULES:
       1. Recommended/Balanced Price: Set this exactly at or slightly below the Market Average. Use psychological pricing (e.g., if average is 500, use 499 or 479).

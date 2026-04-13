@@ -292,7 +292,7 @@ const CompetitorAnalysisView: React.FC<CompetitorAnalysisViewProps> = React.memo
               <div className="p-8 rounded-[2.5rem] bg-slate-50 border border-neutral-200 space-y-6">
                 <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Competitor Price Benchmarks</h4>
                 <div className="flex flex-wrap gap-3">
-                  {competitorAnalysisResults[activeResultTab].marketResearch?.competitorPrices?.map((price: any, i: number) => (
+                  {(competitorAnalysisResults[activeResultTab]?.marketResearch?.competitorPrices || []).map((price: any, i: number) => (
                     <div key={i} className="px-4 py-2 bg-white rounded-xl border border-neutral-100 text-sm font-bold text-slate-700 shadow-sm">
                       ₹{price}
                     </div>
