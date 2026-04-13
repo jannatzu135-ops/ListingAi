@@ -96,7 +96,7 @@ export async function analyzeAndGenerate(
     throw new Error("Gemini AI is not initialized. Please check your API key.");
   }
 
-  const result = await (ai as any).generateContent({
+  const result = await (ai as any).models.generateContent({
     model: "gemini-1.5-flash",
     contents: [{ role: "user", parts }],
     config: {

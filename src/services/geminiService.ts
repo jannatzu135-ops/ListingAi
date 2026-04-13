@@ -53,7 +53,7 @@ async function generateContent(params: any) {
   // Ensure contents is in the correct format for @google/genai
   const formattedContents = contents.parts ? [contents] : (Array.isArray(contents) ? contents : [{ role: "user", parts: Array.isArray(contents) ? contents : [contents] }]);
 
-  return await (ai as any).generateContent({
+  return await (ai as any).models.generateContent({
     model: modelName,
     contents: formattedContents,
     config: config
