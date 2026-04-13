@@ -55,8 +55,33 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
   isOwner,
   accessCode,
 }) => {
+  const [loginError, setLoginError] = React.useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = React.useState(false);
   const [isEditingCode, setIsEditingCode] = React.useState(false);
   const [newCode, setNewCode] = React.useState(accessCode);
+
+  const handleAdminLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    setLoginError(null);
+    try {
+      const { signInWithPopup, GoogleAuthProvider } = await import("firebase/auth");
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.error("Admin login failed:", err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setLoginError("Sign-in cancelled.");
+      } else if (err.code === "auth/popup-blocked") {
+        setLoginError("Popup blocked!");
+      } else {
+        setLoginError("Login failed.");
+      }
+      setTimeout(() => setLoginError(null), 3000);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const handleUpdateCode = async () => {
     if (newCode.length !== 6) return;
@@ -299,20 +324,23 @@ const Sidebar: React.FC<SidebarProps> = React.memo(({
               </button>
             </div>
           ) : (
-            <button
-              onClick={async () => {
-                const { signInWithPopup, GoogleAuthProvider } = await import("firebase/auth");
-                const provider = new GoogleAuthProvider();
-                try {
-                  await signInWithPopup(auth, provider);
-                } catch (err) {
-                  console.error("Admin login failed:", err);
-                }
-              }}
-              className="w-full py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-300"
-            >
-              Admin Login
-            </button>
+            <div className="space-y-2">
+              {loginError && (
+                <p className="text-[10px] text-red-500 font-black uppercase tracking-widest text-center animate-pulse">
+                  {loginError}
+                </p>
+              )}
+              <button
+                onClick={handleAdminLogin}
+                disabled={isLoggingIn}
+                className="w-full py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-300 flex items-center justify-center gap-2"
+              >
+                {isLoggingIn ? (
+                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                ) : null}
+                {isLoggingIn ? "Authenticating..." : "Admin Login"}
+              </button>
+            </div>
           )}
         </div>
       </div>

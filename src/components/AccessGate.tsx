@@ -34,11 +34,13 @@ export default function AccessGate({ onAuthorized }: AccessGateProps) {
     } catch (err: any) {
       console.error("Admin login failed:", err);
       if (err.code === "auth/popup-closed-by-user") {
-        setLoginError("Login cancelled by user.");
+        setLoginError("Sign-in cancelled. Please keep the popup open.");
       } else if (err.code === "auth/popup-blocked") {
         setLoginError("Popup blocked! Please allow popups for this site.");
+      } else if (err.code === "auth/cancelled-popup-request") {
+        setLoginError("Sign-in request was cancelled.");
       } else {
-        setLoginError(`Login failed: ${err.code || "Please try again."}`);
+        setLoginError(`Login failed: ${err.message || "Please try again."}`);
       }
       setTimeout(() => setLoginError(null), 5000);
     } finally {

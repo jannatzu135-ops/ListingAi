@@ -1192,7 +1192,15 @@ Timestamp: ${new Date().toISOString()}
                   await signInWithPopup(auth, provider);
                 } catch (err: any) {
                   console.error("Login failed:", err);
-                  setError(`Login failed: ${err.code || "Please check your internet connection."}`);
+                  if (err.code === "auth/popup-closed-by-user") {
+                    setError("Sign-in cancelled. Please keep the popup open to complete login.");
+                  } else if (err.code === "auth/cancelled-popup-request") {
+                    setError("Sign-in request was cancelled. Please try again.");
+                  } else if (err.code === "auth/popup-blocked") {
+                    setError("Sign-in popup was blocked by your browser. Please allow popups for this site.");
+                  } else {
+                    setError(`Login failed: ${err.message || "Please check your internet connection."}`);
+                  }
                 } finally {
                   setIsLoggingIn(false);
                 }
