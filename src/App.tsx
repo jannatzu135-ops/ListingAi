@@ -1190,9 +1190,9 @@ Timestamp: ${new Date().toISOString()}
                 const provider = new GoogleAuthProvider();
                 try {
                   await signInWithPopup(auth, provider);
-                } catch (err) {
+                } catch (err: any) {
                   console.error("Login failed:", err);
-                  setError("Login failed. Please try again or check your internet connection.");
+                  setError(`Login failed: ${err.code || "Please check your internet connection."}`);
                 } finally {
                   setIsLoggingIn(false);
                 }

@@ -38,7 +38,7 @@ export default function AccessGate({ onAuthorized }: AccessGateProps) {
       } else if (err.code === "auth/popup-blocked") {
         setLoginError("Popup blocked! Please allow popups for this site.");
       } else {
-        setLoginError("Login failed. Please try again.");
+        setLoginError(`Login failed: ${err.code || "Please try again."}`);
       }
       setTimeout(() => setLoginError(null), 5000);
     } finally {
