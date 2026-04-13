@@ -4,22 +4,51 @@ import { generateProductPrompt } from "./productPromptService";
 
 const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
 
-const ai = new GoogleGenAI(apiKey || "MISSING_API_KEY");
+// We don't initialize GoogleGenAI here if the key is missing to avoid the "API Key must be set" error
+let ai: GoogleGenAI | null = null;
+try {
+  if (apiKey) {
+    ai = new GoogleGenAI(apiKey);
+  }
+} catch (e) {
+  console.error("Failed to initialize GoogleGenAI:", e);
+}
 
 /**
  * Helper function to check if AI is configured
  */
-export const isAiConfigured = () => !!apiKey && apiKey !== "" && apiKey !== "MISSING_API_KEY";
+export const isAiConfigured = () => !!apiKey && apiKey !== "" && ai !== null;
 
 /**
  * Helper function to get the generative model with a check for the API key
  */
 const getModel = (modelName: string = "gemini-2.0-flash") => {
-  if (!isAiConfigured()) {
+  if (!isAiConfigured() || !ai) {
     throw new Error("Gemini API Key is missing. If you are on GitHub Pages, please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets. If you are in AI Studio, please ensure the GEMINI_API_KEY is set in the environment.");
   }
   return ai.getGenerativeModel({ model: modelName });
 };
+
+/**
+ * Helper function to generate content using the generative model
+ */
+async function generateContent(params: any) {
+  const modelName = params.model || "gemini-2.0-flash";
+  const model = getModel(modelName);
+  
+  // Extract content and config from params
+  const { contents, config } = params;
+  
+  // If config is provided, we need to handle it separately or pass it to generateContent
+  if (config) {
+    return await model.generateContent({
+      contents: contents.parts ? contents : { parts: contents },
+      ...config
+    });
+  }
+  
+  return await model.generateContent(contents.parts ? contents : { parts: contents });
+}
 
 /**
  * Helper function to retry API calls with exponential backoff
@@ -228,7 +257,7 @@ export const getMarketIntelligence = async (
     }
 
     // Step 1: Get raw research data using Search
-    const searchResponse = await withRetry(() => ai.models.generateContent({
+    const searchResponse = await withRetry(() => generateContent({
       model: "gemini-2.0-flash",
       contents: { parts },
       config: {
@@ -297,7 +326,7 @@ export const getMarketIntelligence = async (
       }
     `;
 
-    const formatResponse = await withRetry(() => ai.models.generateContent({
+    const formatResponse = await withRetry(() => generateContent({
       model: "gemini-2.0-flash",
       contents: { parts: [{ text: formatPrompt }] },
       config: {
@@ -398,7 +427,7 @@ export const generateListing = async (
     }
 
     // Step 1a: Get raw research data using Search
-    const researchSearchResponse = await withRetry(() => ai.models.generateContent({
+    const researchSearchResponse = await withRetry(() => generateContent({
       model: "gemini-2.0-flash",
       contents: { parts: researchParts },
       config: {
@@ -429,7 +458,7 @@ export const generateListing = async (
       }
     `;
 
-    const researchFormatResponse = await withRetry(() => ai.models.generateContent({
+    const researchFormatResponse = await withRetry(() => generateContent({
       model: "gemini-2.0-flash",
       contents: { parts: [{ text: researchFormatPrompt }] },
       config: {
@@ -724,8 +753,8 @@ export const generateListing = async (
         }
       };
 
-      const response = await withRetry(() => ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      const response = await withRetry(() => generateContent({
+        model: "gemini-1.5-flash",
         contents: { parts },
         config
       }));
@@ -857,8 +886,8 @@ export const generateVirtualTryOn = async (options: VirtualTryOnOptions): Promis
       });
     }
 
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: { parts },
     }));
 
@@ -881,8 +910,8 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
   No people, no products, just the environment.`;
 
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: {
         parts: [{ text: fullPrompt }]
       }
@@ -902,8 +931,8 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
 
 export const analyzeProductImage = async (imageB64: string): Promise<string> => {
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.0-flash",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: {
         parts: [
           { text: "Analyze this product image and provide a concise, professional description (max 10 words) for an e-commerce listing. Focus on the item type, color, and key features." },
@@ -935,8 +964,8 @@ export const suggestPhotoshootSettings = async (imageB64: string, mode: string):
   `;
 
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: {
         parts: [
           { text: prompt },
@@ -957,8 +986,8 @@ export const generateProductStudioImage = async (params: any): Promise<string> =
   const promptParts = generateProductPrompt(params);
   
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: { parts: promptParts },
     }));
 
@@ -1046,10 +1075,9 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
       }
     `;
 
-    // Run both calls in parallel for better performance
     const [imageResponse, adviceResponse] = await Promise.all([
-      withRetry(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+      withRetry(() => generateContent({
+        model: 'gemini-1.5-flash',
         contents: {
           parts: [
             { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
@@ -1057,8 +1085,8 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
           ],
         },
       })),
-      withRetry(() => ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      withRetry(() => generateContent({
+        model: 'gemini-1.5-flash',
         contents: {
           parts: [
             { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
@@ -1136,8 +1164,8 @@ export const regenerateSection = async (
       });
     }
 
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -1228,8 +1256,8 @@ export const analyzeCompetitor = async (
 
   try {
     console.log(`Starting competitor analysis for ${platform} with URL: ${productUrl}`);
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: { parts: [{ text: prompt }] },
       config: {
       responseMimeType: "application/json",
@@ -1391,8 +1419,8 @@ export const generateAPlusContent = async (productDetails: string, imageB64?: st
   }
 
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const response = await withRetry(() => generateContent({
+      model: "gemini-1.5-flash",
       contents: { parts: contents },
       config: { responseMimeType: "application/json" }
     }));
