@@ -1,11 +1,13 @@
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { PLATFORM_RULES, GLOBAL_RULES } from "../constants/platformRules";
 import { generateProductPrompt } from "./productPromptService";
+
+export const Type = SchemaType;
 
 const getApiKey = () => {
   try {
     // Check both process.env and import.meta.env
-    const key = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
+    const key = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || import.meta.env.VITE_GEMINI_API_KEY || "";
     return typeof key === 'string' ? key.trim() : "";
   } catch (e) {
     const key = import.meta.env.VITE_GEMINI_API_KEY || "";
@@ -20,44 +22,59 @@ const isValidKey = apiKey &&
                   apiKey !== "undefined" && 
                   apiKey !== "null" && 
                   apiKey !== "YOUR_API_KEY" &&
-                  apiKey.length > 10; // Real keys are usually longer
+                  apiKey.length > 10;
 
-// We don't initialize GoogleGenAI here if the key is missing to avoid the "API Key must be set" error
-let ai: GoogleGenAI | null = null;
+let genAI: GoogleGenerativeAI | null = null;
 if (isValidKey) {
   try {
-    ai = new GoogleGenAI({ apiKey });
+    genAI = new GoogleGenerativeAI(apiKey);
   } catch (e) {
-    // Silent catch - we handle missing AI via isAiConfigured()
+    // Silent catch
   }
 }
 
 /**
  * Helper function to check if AI is configured
  */
-export const isAiConfigured = () => isValidKey && ai !== null;
+export const isAiConfigured = () => isValidKey && genAI !== null;
 
 /**
  * Helper function to generate content using the generative model
  */
 async function generateContent(params: any) {
-  if (!isAiConfigured() || !ai) {
-    throw new Error("Gemini API Key is missing. If you are on GitHub Pages, please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets. If you are in AI Studio, please ensure the GEMINI_API_KEY is set in the environment.");
+  if (!isAiConfigured() || !genAI) {
+    throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets.");
   }
 
-  const modelName = params.model || "gemini-1.5-flash";
+  const modelName = params.model || "gemini-1.5-flash-latest";
+  const model = genAI.getGenerativeModel({ model: modelName });
   
-  // Extract content and config from params
   const { contents, config } = params;
   
-  // Ensure contents is in the correct format for @google/genai
-  const formattedContents = contents.parts ? [contents] : (Array.isArray(contents) ? contents : [{ role: "user", parts: Array.isArray(contents) ? contents : [contents] }]);
+  // Format contents for @google/generative-ai
+  // The SDK expects an array of { role, parts: [{ text: ... } | { inlineData: ... }] }
+  let formattedContents = [];
+  if (Array.isArray(contents)) {
+    formattedContents = contents;
+  } else if (contents.parts) {
+    formattedContents = [contents];
+  } else {
+    formattedContents = [{ role: "user", parts: [{ text: contents }] }];
+  }
 
-  return await (ai as any).models.generateContent({
-    model: modelName,
+  const result = await model.generateContent({
     contents: formattedContents,
-    config: config
+    generationConfig: config,
+    tools: params.tools || config?.tools
   });
+
+  const response = await result.response;
+  const text = response.text();
+  return {
+    text: text,
+    response: response, // Keep original response for advanced usage
+    candidates: [{ content: { parts: [{ text: text }] } }]
+  };
 }
 
 /**
@@ -268,7 +285,7 @@ export const getMarketIntelligence = async (
 
     // Step 1: Get raw research data using Search
     const searchResponse = await withRetry(() => generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts },
       config: {
         tools: [{ googleSearch: {} }]
@@ -337,7 +354,7 @@ export const getMarketIntelligence = async (
     `;
 
     const formatResponse = await withRetry(() => generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: [{ text: formatPrompt }] },
       config: {
         responseMimeType: "application/json"
@@ -438,7 +455,7 @@ export const generateListing = async (
 
     // Step 1a: Get raw research data using Search
     const researchSearchResponse = await withRetry(() => generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: researchParts },
       config: {
         tools: [{ googleSearch: {} }]
@@ -469,7 +486,7 @@ export const generateListing = async (
     `;
 
     const researchFormatResponse = await withRetry(() => generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: [{ text: researchFormatPrompt }] },
       config: {
         responseMimeType: "application/json"
@@ -620,15 +637,15 @@ export const generateListing = async (
       const config: any = {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            title: { type: Type.STRING },
+            title: { type: SchemaType.STRING },
             titleVariations: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                short: { type: Type.STRING },
-                medium: { type: Type.STRING },
-                long: { type: Type.STRING }
+                short: { type: SchemaType.STRING },
+                medium: { type: SchemaType.STRING },
+                long: { type: SchemaType.STRING }
               },
               required: ["short", "medium", "long"]
             },
@@ -764,7 +781,7 @@ export const generateListing = async (
       };
 
       const response = await withRetry(() => generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-1.5-flash-latest",
         contents: { parts },
         config
       }));
@@ -897,11 +914,11 @@ export const generateVirtualTryOn = async (options: VirtualTryOnOptions): Promis
     }
 
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts },
     }));
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -921,13 +938,13 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
 
   try {
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: {
         parts: [{ text: fullPrompt }]
       }
     }));
 
-    for (const part of response.candidates[0].content.parts) {
+    for (const part of (response.candidates[0].content.parts as any[])) {
       if (part.inlineData) {
         return part.inlineData.data;
       }
@@ -942,7 +959,7 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
 export const analyzeProductImage = async (imageB64: string): Promise<string> => {
   try {
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: {
         parts: [
           { text: "Analyze this product image and provide a concise, professional description (max 10 words) for an e-commerce listing. Focus on the item type, color, and key features." },
@@ -975,7 +992,7 @@ export const suggestPhotoshootSettings = async (imageB64: string, mode: string):
 
   try {
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: {
         parts: [
           { text: prompt },
@@ -997,11 +1014,11 @@ export const generateProductStudioImage = async (params: any): Promise<string> =
   
   try {
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: promptParts },
     }));
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -1032,7 +1049,7 @@ export const removeBackground = async (imageB64: string): Promise<string> => {
       },
     }));
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -1110,7 +1127,7 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
     ]);
 
     let processedImage = "";
-    for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
+    for (const part of (imageResponse.candidates?.[0]?.content?.parts as any[]) || []) {
       if (part.inlineData) {
         processedImage = `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -1175,7 +1192,7 @@ export const regenerateSection = async (
     }
 
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts },
       config: {
         responseMimeType: "application/json",
@@ -1267,7 +1284,7 @@ export const analyzeCompetitor = async (
   try {
     console.log(`Starting competitor analysis for ${platform} with URL: ${productUrl}`);
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: [{ text: prompt }] },
       config: {
       responseMimeType: "application/json",
@@ -1430,7 +1447,7 @@ export const generateAPlusContent = async (productDetails: string, imageB64?: st
 
   try {
     const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-latest",
       contents: { parts: contents },
       config: { responseMimeType: "application/json" }
     }));

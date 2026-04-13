@@ -1,21 +1,21 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Platform, ProductMasterInput, ProductImageInput, PlatformOutput, PricingStrategy } from "../types";
 import { PLATFORM_RULES } from "../constants/platforms";
 
 const getApiKey = () => {
   try {
-    const key = process.env.GEMINI_API_KEY || "";
+    const key = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || import.meta.env.VITE_GEMINI_API_KEY || "";
     return typeof key === 'string' ? key.trim() : "";
   } catch (e) {
-    return "";
+    return import.meta.env.VITE_GEMINI_API_KEY || "";
   }
 };
 
 const apiKey = getApiKey();
-let ai: GoogleGenAI | null = null;
+let genAI: GoogleGenerativeAI | null = null;
 if (apiKey && apiKey.length > 10) {
   try {
-    ai = new GoogleGenAI({ apiKey });
+    genAI = new GoogleGenerativeAI(apiKey);
   } catch (e) {
     // Silent catch
   }
@@ -82,7 +82,7 @@ export async function analyzeAndGenerate(
     - Pricing must be realistic based on the product type.
   `;
 
-  const parts = [
+  const parts: any[] = [
     { text: prompt },
     {
       inlineData: {
@@ -92,18 +92,19 @@ export async function analyzeAndGenerate(
     }
   ];
 
-  if (!ai) {
+  if (!genAI) {
     throw new Error("Gemini AI is not initialized. Please check your API key.");
   }
 
-  const result = await (ai as any).models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: [{ role: "user", parts }],
-    config: {
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts }] as any,
+    generationConfig: {
       responseMimeType: "application/json",
     }
-  });
+  } as any);
 
-  const responseText = result.text || "{}";
+  const response = await result.response;
+  const responseText = response.text() || "{}";
   return JSON.parse(responseText) as PlatformOutput;
 }
