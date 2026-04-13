@@ -34,13 +34,11 @@ export default function AccessGate({ onAuthorized }: AccessGateProps) {
     } catch (err: any) {
       console.error("Admin login failed:", err);
       if (err.code === "auth/popup-closed-by-user") {
-        setLoginError("Sign-in cancelled. Please keep the popup open.");
+        setLoginError("Login cancelled by user.");
       } else if (err.code === "auth/popup-blocked") {
         setLoginError("Popup blocked! Please allow popups for this site.");
-      } else if (err.code === "auth/cancelled-popup-request") {
-        setLoginError("Sign-in request was cancelled.");
       } else {
-        setLoginError(`Login failed: ${err.message || "Please try again."}`);
+        setLoginError("Login failed. Please try again.");
       }
       setTimeout(() => setLoginError(null), 5000);
     } finally {
@@ -66,12 +64,8 @@ export default function AccessGate({ onAuthorized }: AccessGateProps) {
         setIsSuccess(true);
         setError(false);
         setTimeout(() => {
-          try {
-            localStorage.setItem("isAuthorized", "true");
-            localStorage.setItem("usedAccessCode", code);
-          } catch (e) {
-            console.warn("LocalStorage set failed:", e);
-          }
+          localStorage.setItem("isAuthorized", "true");
+          localStorage.setItem("usedAccessCode", code);
           onAuthorized();
         }, 1200);
       } else {

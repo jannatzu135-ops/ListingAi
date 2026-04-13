@@ -1,36 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfigJson from '../firebase-applet-config.json';
+import firebaseConfig from '../firebase-applet-config.json';
 
-// Use environment variables if available (for GitHub Pages), 
-// otherwise fallback to the local config file (for AI Studio preview).
-const config = (firebaseConfigJson as any) || {};
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || config.apiKey || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || config.authDomain || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || config.projectId || "",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || config.storageBucket || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || config.messagingSenderId || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || config.appId || "",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || config.firestoreDatabaseId || ""
-};
-
-let app;
-try {
-  if (!firebaseConfig.apiKey) {
-    console.warn("Firebase API Key is missing. Auth and Firestore will not work.");
-    app = initializeApp({ ...firebaseConfig, apiKey: "MISSING" }); // Dummy app to prevent crash
-  } else {
-    app = initializeApp(firebaseConfig);
-  }
-} catch (e) {
-  console.error("Firebase initialization failed:", e);
-  app = initializeApp({ apiKey: "ERROR" }); // Fallback
-}
-
+const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(default)");
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 export enum OperationType {
   CREATE = 'create',

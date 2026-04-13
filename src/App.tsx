@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { GoogleGenAI } from "@google/genai";
 import {
   Sparkles,
   ShoppingBag,
@@ -30,7 +31,6 @@ import {
   type CompetitorAnalysisResult,
   type MarketIntelligenceResult,
   type APlusContentResult,
-  isAiConfigured,
 } from "./services/geminiService";
 
 import { auth, db, handleFirestoreError, OperationType } from "./firebase";
@@ -148,14 +148,7 @@ export default function App() {
     direction: "asc" | "desc";
   }>({ field: "searchVolume", direction: "desc" });
 
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("isAuthorized") === "true";
-    } catch (e) {
-      console.warn("LocalStorage not accessible:", e);
-      return false;
-    }
-  });
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => localStorage.getItem("isAuthorized") === "true");
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -225,12 +218,7 @@ export default function App() {
       // Show the latest one if it hasn't been shown/dismissed
       if (relevant.length > 0) {
         const latest = relevant[0];
-        let dismissed = [];
-        try {
-          dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
-        } catch (e) {
-          console.warn("LocalStorage read failed:", e);
-        }
+        const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
         if (!dismissed.includes(latest.id)) {
           setShowNotification(latest);
         }
@@ -394,29 +382,25 @@ export default function App() {
   // Robust Logout Logic
   useEffect(() => {
     if (isAuthorized && currentAccessCode) {
-      let usedCode = null;
-      try {
-        usedCode = localStorage.getItem("usedAccessCode");
-      } catch (e) {
-        console.warn("LocalStorage read failed:", e);
-      }
-      
+      const usedCode = localStorage.getItem("usedAccessCode");
       if (!usedCode || usedCode !== currentAccessCode) {
         console.log("Access code mismatch detected. Logging out...", { usedCode, currentAccessCode });
         setIsAuthorized(false);
-        try {
-          localStorage.removeItem("isAuthorized");
-          localStorage.removeItem("usedAccessCode");
-        } catch (e) {
-          console.warn("LocalStorage remove failed:", e);
-        }
+        localStorage.removeItem("isAuthorized");
+        localStorage.removeItem("usedAccessCode");
       }
     }
   }, [isAuthorized, currentAccessCode]);
 
-  // Domain Authorization Check (Disabled for deployment)
+  // Domain Authorization Check
   useEffect(() => {
-    setIsDomainAuthorized(true);
+    const hostname = window.location.hostname;
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isOriginal = hostname.includes(APP_ID);
+    
+    if (!isLocal && !isOriginal) {
+      setIsDomainAuthorized(false);
+    }
   }, []);
 
   // Load history from localStorage
@@ -1115,7 +1099,7 @@ ${(result.aPlusContentIdeas || []).map((idea) => `[${idea.moduleName}]\nLayout: 
               </a>
             </div>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pt-4">
-              Security ID: {APP_ID} | Host: {window.location.hostname}
+              Security ID: {APP_ID}
             </p>
           </motion.div>
         </div>
@@ -1190,17 +1174,9 @@ Timestamp: ${new Date().toISOString()}
                 const provider = new GoogleAuthProvider();
                 try {
                   await signInWithPopup(auth, provider);
-                } catch (err: any) {
+                } catch (err) {
                   console.error("Login failed:", err);
-                  if (err.code === "auth/popup-closed-by-user") {
-                    setError("Sign-in cancelled. Please keep the popup open to complete login.");
-                  } else if (err.code === "auth/cancelled-popup-request") {
-                    setError("Sign-in request was cancelled. Please try again.");
-                  } else if (err.code === "auth/popup-blocked") {
-                    setError("Sign-in popup was blocked by your browser. Please allow popups for this site.");
-                  } else {
-                    setError(`Login failed: ${err.message || "Please check your internet connection."}`);
-                  }
+                  setError("Login failed. Please try again or check your internet connection.");
                 } finally {
                   setIsLoggingIn(false);
                 }
@@ -1219,11 +1195,7 @@ Timestamp: ${new Date().toISOString()}
             </button>
             <button
               onClick={() => {
-                try {
-                  localStorage.removeItem("isAuthorized");
-                } catch (e) {
-                  console.warn("LocalStorage remove failed:", e);
-                }
+                localStorage.removeItem("isAuthorized");
                 setIsAuthorized(false);
               }}
               className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
@@ -1272,19 +1244,6 @@ Timestamp: ${new Date().toISOString()}
         />
 
         <main className="mx-auto p-6 lg:p-10 transition-all duration-500 max-w-[1600px]">
-          {!isAiConfigured() && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-4 text-amber-800 shadow-sm">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <AlertTriangle size={20} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold">Gemini API Key Missing</p>
-                <p className="text-xs font-medium opacity-80">
-                  AI features are disabled. If you are on GitHub Pages, please add <code className="bg-amber-100 px-1 rounded">VITE_GEMINI_API_KEY</code> to your GitHub Repository Secrets.
-                </p>
-              </div>
-            </div>
-          )}
           <ErrorDisplay error={error} />
           
           <Suspense fallback={
@@ -1427,12 +1386,8 @@ Timestamp: ${new Date().toISOString()}
                   <h4 className="font-semibold text-neutral-900">Announcement</h4>
                   <button 
                     onClick={() => {
-                      try {
-                        const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
-                        localStorage.setItem('dismissedNotifications', JSON.stringify([...dismissed, showNotification.id]));
-                      } catch (e) {
-                        console.warn("LocalStorage update failed:", e);
-                      }
+                      const dismissed = JSON.parse(localStorage.getItem('dismissedNotifications') || '[]');
+                      localStorage.setItem('dismissedNotifications', JSON.stringify([...dismissed, showNotification.id]));
                       setShowNotification(null);
                     }}
                     className="p-1 hover:bg-neutral-100 rounded-lg transition-colors"

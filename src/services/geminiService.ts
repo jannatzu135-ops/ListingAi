@@ -1,81 +1,9 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { PLATFORM_RULES, GLOBAL_RULES } from "../constants/platformRules";
 import { generateProductPrompt } from "./productPromptService";
 
-export const Type = SchemaType;
-
-const getApiKey = () => {
-  try {
-    // Check both process.env and import.meta.env
-    const key = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || import.meta.env.VITE_GEMINI_API_KEY || "";
-    return typeof key === 'string' ? key.trim() : "";
-  } catch (e) {
-    const key = import.meta.env.VITE_GEMINI_API_KEY || "";
-    return typeof key === 'string' ? key.trim() : "";
-  }
-};
-
-const apiKey = getApiKey();
-// Check for common placeholder values or empty/undefined strings
-const isValidKey = apiKey && 
-                  apiKey !== "" && 
-                  apiKey !== "undefined" && 
-                  apiKey !== "null" && 
-                  apiKey !== "YOUR_API_KEY" &&
-                  apiKey.length > 10;
-
-let genAI: GoogleGenerativeAI | null = null;
-if (isValidKey) {
-  try {
-    genAI = new GoogleGenerativeAI(apiKey);
-  } catch (e) {
-    // Silent catch
-  }
-}
-
-/**
- * Helper function to check if AI is configured
- */
-export const isAiConfigured = () => isValidKey && genAI !== null;
-
-/**
- * Helper function to generate content using the generative model
- */
-async function generateContent(params: any) {
-  if (!isAiConfigured() || !genAI) {
-    throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets.");
-  }
-
-  const modelName = params.model || "gemini-1.5-flash-latest";
-  const model = genAI.getGenerativeModel({ model: modelName });
-  
-  const { contents, config } = params;
-  
-  // Format contents for @google/generative-ai
-  // The SDK expects an array of { role, parts: [{ text: ... } | { inlineData: ... }] }
-  let formattedContents = [];
-  if (Array.isArray(contents)) {
-    formattedContents = contents;
-  } else if (contents.parts) {
-    formattedContents = [contents];
-  } else {
-    formattedContents = [{ role: "user", parts: [{ text: contents }] }];
-  }
-
-  const result = await model.generateContent({
-    contents: formattedContents,
-    generationConfig: config,
-    tools: params.tools || config?.tools
-  });
-
-  const response = await result.response;
-  const text = response.text();
-  return {
-    text: text,
-    response: response, // Keep original response for advanced usage
-    candidates: [{ content: { parts: [{ text: text }] } }]
-  };
-}
+const apiKey = process.env.GEMINI_API_KEY || "";
+const ai = new GoogleGenAI({ apiKey });
 
 /**
  * Helper function to retry API calls with exponential backoff
@@ -284,8 +212,8 @@ export const getMarketIntelligence = async (
     }
 
     // Step 1: Get raw research data using Search
-    const searchResponse = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const searchResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: { parts },
       config: {
         tools: [{ googleSearch: {} }]
@@ -353,15 +281,15 @@ export const getMarketIntelligence = async (
       }
     `;
 
-    const formatResponse = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const formatResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: { parts: [{ text: formatPrompt }] },
       config: {
         responseMimeType: "application/json"
       }
     }));
 
-    return JSON.parse(cleanJsonResponse(formatResponse.text));
+    return JSON.parse(formatResponse.text);
   } catch (error) {
     console.error("Market Intelligence failed:", error);
     throw error;
@@ -398,29 +326,10 @@ export interface ListingOptions {
   pricingGoal?: string;
 }
 
-const cleanJsonResponse = (text: string): string => {
-  if (!text) return "{}";
-  // Remove markdown code blocks if present
-  let cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
-  
-  // Find the first '{' and the last '}' to extract only the JSON object
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-  }
-  
-  return cleaned;
-};
-
 export const generateListing = async (
   platforms: string[],
   options: ListingOptions
 ): Promise<Record<string, ListingResult>> => {
-  if (!isAiConfigured()) {
-    throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets to enable AI generation.");
-  }
   console.log("Starting generation...");
   const results: Record<string, ListingResult> = {};
 
@@ -454,8 +363,8 @@ export const generateListing = async (
     }
 
     // Step 1a: Get raw research data using Search
-    const researchSearchResponse = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const researchSearchResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: { parts: researchParts },
       config: {
         tools: [{ googleSearch: {} }]
@@ -485,15 +394,15 @@ export const generateListing = async (
       }
     `;
 
-    const researchFormatResponse = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const researchFormatResponse = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: { parts: [{ text: researchFormatPrompt }] },
       config: {
         responseMimeType: "application/json"
       }
     }));
 
-    marketResearch = JSON.parse(cleanJsonResponse(researchFormatResponse.text));
+    marketResearch = JSON.parse(researchFormatResponse.text);
     console.log("Market research completed:", marketResearch);
   } catch (error) {
     console.error("Market research failed, proceeding with estimates:", error);
@@ -525,12 +434,12 @@ export const generateListing = async (
       - Ensure the listing is highly SEO optimized for the specific platform's search algorithm.
 
       MARKET RESEARCH DATA (USE THIS AS THE SOURCE OF TRUTH):
-      - HSN Code: ${marketResearch.hsnCode || 'N/A'}
-      - GST Rate: ${marketResearch.gstRate || 'N/A'}
-      - Market Average (Median): ₹${marketResearch.marketAveragePrice || 0}
-      - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice || 0}
-      - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice || 0}
-      - Competitor Benchmarks: ${(marketResearch.competitorPrices || []).map((p: any) => "₹" + p).join(", ") || 'N/A'}
+      - HSN Code: ${marketResearch.hsnCode}
+      - GST Rate: ${marketResearch.gstRate}
+      - Market Average (Median): ₹${marketResearch.marketAveragePrice}
+      - Budget Entry (25th Percentile): ₹${marketResearch.budgetPrice}
+      - Premium Tier (75th Percentile): ₹${marketResearch.premiumPrice}
+      - Competitor Benchmarks: ${marketResearch.competitorPrices.map((p: any) => "₹" + p).join(", ")}
 
       PRICING STRATEGY CALCULATION RULES:
       1. Recommended/Balanced Price: Set this exactly at or slightly below the Market Average. Use psychological pricing (e.g., if average is 500, use 499 or 479).
@@ -637,15 +546,15 @@ export const generateListing = async (
       const config: any = {
         responseMimeType: "application/json",
         responseSchema: {
-          type: SchemaType.OBJECT,
+          type: Type.OBJECT,
           properties: {
-            title: { type: SchemaType.STRING },
+            title: { type: Type.STRING },
             titleVariations: {
-              type: SchemaType.OBJECT,
+              type: Type.OBJECT,
               properties: {
-                short: { type: SchemaType.STRING },
-                medium: { type: SchemaType.STRING },
-                long: { type: SchemaType.STRING }
+                short: { type: Type.STRING },
+                medium: { type: Type.STRING },
+                long: { type: Type.STRING }
               },
               required: ["short", "medium", "long"]
             },
@@ -780,13 +689,13 @@ export const generateListing = async (
         }
       };
 
-      const response = await withRetry(() => generateContent({
-        model: "gemini-1.5-flash-latest",
+      const response = await withRetry(() => ai.models.generateContent({
+        model: "gemini-3-flash-preview",
         contents: { parts },
         config
       }));
 
-      const result = JSON.parse(cleanJsonResponse(response.text));
+      const result = JSON.parse(response.text);
       results[platform] = result;
     } catch (error) {
       console.error(`Error generating listing for ${platform}:`, error);
@@ -913,12 +822,12 @@ export const generateVirtualTryOn = async (options: VirtualTryOnOptions): Promis
       });
     }
 
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
       contents: { parts },
     }));
 
-    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -937,14 +846,14 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
   No people, no products, just the environment.`;
 
   try {
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
       contents: {
         parts: [{ text: fullPrompt }]
       }
     }));
 
-    for (const part of (response.candidates[0].content.parts as any[])) {
+    for (const part of response.candidates[0].content.parts) {
       if (part.inlineData) {
         return part.inlineData.data;
       }
@@ -958,8 +867,8 @@ export const generateBackgroundImage = async (prompt: string): Promise<string> =
 
 export const analyzeProductImage = async (imageB64: string): Promise<string> => {
   try {
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.0-flash",
       contents: {
         parts: [
           { text: "Analyze this product image and provide a concise, professional description (max 10 words) for an e-commerce listing. Focus on the item type, color, and key features." },
@@ -991,8 +900,8 @@ export const suggestPhotoshootSettings = async (imageB64: string, mode: string):
   `;
 
   try {
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { text: prompt },
@@ -1002,7 +911,7 @@ export const suggestPhotoshootSettings = async (imageB64: string, mode: string):
       config: { responseMimeType: "application/json" }
     }));
 
-    return JSON.parse(cleanJsonResponse(response.text));
+    return JSON.parse(response.text);
   } catch (error) {
     console.error("AI Suggestion failed:", error);
     throw error;
@@ -1013,12 +922,12 @@ export const generateProductStudioImage = async (params: any): Promise<string> =
   const promptParts = generateProductPrompt(params);
   
   try {
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
       contents: { parts: promptParts },
     }));
 
-    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -1032,8 +941,8 @@ export const generateProductStudioImage = async (params: any): Promise<string> =
 
 export const removeBackground = async (imageB64: string): Promise<string> => {
   try {
-    const response = await withRetry(() => generateContent({
-      model: 'gemini-1.5-flash',
+    const response = await withRetry(() => ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           {
@@ -1049,7 +958,7 @@ export const removeBackground = async (imageB64: string): Promise<string> => {
       },
     }));
 
-    for (const part of (response.candidates?.[0]?.content?.parts as any[]) || []) {
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -1102,9 +1011,10 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
       }
     `;
 
+    // Run both calls in parallel for better performance
     const [imageResponse, adviceResponse] = await Promise.all([
-      withRetry(() => generateContent({
-        model: 'gemini-1.5-flash',
+      withRetry(() => ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
         contents: {
           parts: [
             { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
@@ -1112,8 +1022,8 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
           ],
         },
       })),
-      withRetry(() => generateContent({
-        model: 'gemini-1.5-flash',
+      withRetry(() => ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
         contents: {
           parts: [
             { inlineData: { data: imageB64, mimeType: 'image/jpeg' } },
@@ -1127,13 +1037,13 @@ export const processLowShippingImage = async (imageB64: string): Promise<LowShip
     ]);
 
     let processedImage = "";
-    for (const part of (imageResponse.candidates?.[0]?.content?.parts as any[]) || []) {
+    for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         processedImage = `data:image/png;base64,${part.inlineData.data}`;
       }
     }
 
-    const adviceResult = JSON.parse(cleanJsonResponse(adviceResponse.text));
+    const adviceResult = JSON.parse(adviceResponse.text);
 
     return {
       image: processedImage || `data:image/png;base64,${imageB64}`,
@@ -1191,15 +1101,15 @@ export const regenerateSection = async (
       });
     }
 
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: { parts },
       config: {
         responseMimeType: "application/json",
       },
     }));
 
-    const result = JSON.parse(cleanJsonResponse(response.text || "{}"));
+    const result = JSON.parse(response.text || "{}");
     const data = result[section];
     
     if ((section === 'keywords' || section === 'bulletPoints') && typeof data === 'string') {
@@ -1283,8 +1193,8 @@ export const analyzeCompetitor = async (
 
   try {
     console.log(`Starting competitor analysis for ${platform} with URL: ${productUrl}`);
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: { parts: [{ text: prompt }] },
       config: {
       responseMimeType: "application/json",
@@ -1353,7 +1263,9 @@ export const analyzeCompetitor = async (
   const text = response.text || "{}";
   console.log("Competitor Analysis Raw Response:", text);
   
-  const result = JSON.parse(cleanJsonResponse(text));
+  // Clean up potential markdown blocks if present (though responseMimeType should prevent them)
+  const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim();
+  const result = JSON.parse(cleanJson);
   
   // Ensure the result has the required structure to prevent crashes
   if (!result.targetProduct) {
@@ -1446,13 +1358,13 @@ export const generateAPlusContent = async (productDetails: string, imageB64?: st
   }
 
   try {
-    const response = await withRetry(() => generateContent({
-      model: "gemini-1.5-flash-latest",
+    const response = await withRetry(() => ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: { parts: contents },
       config: { responseMimeType: "application/json" }
     }));
 
-    return JSON.parse(cleanJsonResponse(response.text));
+    return JSON.parse(response.text);
   } catch (error) {
     console.error('Error generating A+ Content:', error);
     throw error;

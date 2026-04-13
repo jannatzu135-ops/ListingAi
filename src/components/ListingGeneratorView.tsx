@@ -701,7 +701,7 @@ const ListingGeneratorView: React.FC<ListingGeneratorViewProps> = React.memo((pr
                             const result = results[activeResultTab];
                             if (!result) return;
                             let fullText = `Title: ${result.title}\n\n`;
-                            (result.platformSpecificBlocks || []).forEach((block: any) => {
+                            result.platformSpecificBlocks.forEach((block: any) => {
                               fullText += `${block.label}:\n${block.content}\n\n`;
                             });
                             fullText += `Description:\n${result.description}\n\n`;
@@ -859,8 +859,8 @@ const ListingGeneratorView: React.FC<ListingGeneratorViewProps> = React.memo((pr
                         {["short", "medium", "long"].map((v) => (
                           <div key={v} className="p-4 rounded-xl bg-neutral-50 border border-neutral-100 space-y-2">
                             <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">{v} (Variation)</p>
-                            <p className="text-xs font-bold leading-tight">{(results[activeResultTab].titleVariations as any)?.[v] || "N/A"}</p>
-                            <button onClick={() => copyToClipboard((results[activeResultTab].titleVariations as any)?.[v] || "", `title-${v}`)} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                            <p className="text-xs font-bold leading-tight">{(results[activeResultTab].titleVariations as any)[v]}</p>
+                            <button onClick={() => copyToClipboard((results[activeResultTab].titleVariations as any)[v], `title-${v}`)} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                               {copiedField === `title-${v}` ? <Check size={10} /> : <Copy size={10} />} Copy
                             </button>
                           </div>
