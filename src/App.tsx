@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { GoogleGenAI } from "@google/genai";
 import {
   Sparkles,
   ShoppingBag,

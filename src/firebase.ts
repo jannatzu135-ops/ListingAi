@@ -5,7 +5,7 @@ import firebaseConfigJson from '../firebase-applet-config.json';
 
 // Use environment variables if available (for GitHub Pages), 
 // otherwise fallback to the local config file (for AI Studio preview).
-const config = firebaseConfigJson || {};
+const config = (firebaseConfigJson as any) || {};
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || config.apiKey,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || config.authDomain,

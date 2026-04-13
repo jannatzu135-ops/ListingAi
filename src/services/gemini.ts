@@ -2,7 +2,24 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Platform, ProductMasterInput, ProductImageInput, PlatformOutput, PricingStrategy } from "../types";
 import { PLATFORM_RULES } from "../constants/platforms";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const getApiKey = () => {
+  try {
+    const key = process.env.GEMINI_API_KEY || "";
+    return typeof key === 'string' ? key.trim() : "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const apiKey = getApiKey();
+let ai: GoogleGenAI | null = null;
+if (apiKey && apiKey.length > 10) {
+  try {
+    ai = new GoogleGenAI({ apiKey });
+  } catch (e) {
+    // Silent catch
+  }
+}
 
 export async function analyzeAndGenerate(
   platform: Platform,
@@ -75,8 +92,12 @@ export async function analyzeAndGenerate(
     }
   ];
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+  if (!ai) {
+    throw new Error("Gemini AI is not initialized. Please check your API key.");
+  }
+
+  const result = await (ai as any).generateContent({
+    model: "gemini-1.5-flash",
     contents: [{ role: "user", parts }],
     config: {
       responseMimeType: "application/json",

@@ -2,52 +2,62 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { PLATFORM_RULES, GLOBAL_RULES } from "../constants/platformRules";
 import { generateProductPrompt } from "./productPromptService";
 
-const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
+const getApiKey = () => {
+  try {
+    // Check both process.env and import.meta.env
+    const key = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
+    return typeof key === 'string' ? key.trim() : "";
+  } catch (e) {
+    const key = import.meta.env.VITE_GEMINI_API_KEY || "";
+    return typeof key === 'string' ? key.trim() : "";
+  }
+};
+
+const apiKey = getApiKey();
+// Check for common placeholder values or empty/undefined strings
+const isValidKey = apiKey && 
+                  apiKey !== "" && 
+                  apiKey !== "undefined" && 
+                  apiKey !== "null" && 
+                  apiKey !== "YOUR_API_KEY" &&
+                  apiKey.length > 10; // Real keys are usually longer
 
 // We don't initialize GoogleGenAI here if the key is missing to avoid the "API Key must be set" error
 let ai: GoogleGenAI | null = null;
-try {
-  if (apiKey) {
-    ai = new GoogleGenAI(apiKey);
+if (isValidKey) {
+  try {
+    ai = new GoogleGenAI({ apiKey });
+  } catch (e) {
+    // Silent catch - we handle missing AI via isAiConfigured()
   }
-} catch (e) {
-  console.error("Failed to initialize GoogleGenAI:", e);
 }
 
 /**
  * Helper function to check if AI is configured
  */
-export const isAiConfigured = () => !!apiKey && apiKey !== "" && ai !== null;
-
-/**
- * Helper function to get the generative model with a check for the API key
- */
-const getModel = (modelName: string = "gemini-2.0-flash") => {
-  if (!isAiConfigured() || !ai) {
-    throw new Error("Gemini API Key is missing. If you are on GitHub Pages, please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets. If you are in AI Studio, please ensure the GEMINI_API_KEY is set in the environment.");
-  }
-  return ai.getGenerativeModel({ model: modelName });
-};
+export const isAiConfigured = () => isValidKey && ai !== null;
 
 /**
  * Helper function to generate content using the generative model
  */
 async function generateContent(params: any) {
-  const modelName = params.model || "gemini-2.0-flash";
-  const model = getModel(modelName);
+  if (!isAiConfigured() || !ai) {
+    throw new Error("Gemini API Key is missing. If you are on GitHub Pages, please add VITE_GEMINI_API_KEY to your GitHub Repository Secrets. If you are in AI Studio, please ensure the GEMINI_API_KEY is set in the environment.");
+  }
+
+  const modelName = params.model || "gemini-1.5-flash";
   
   // Extract content and config from params
   const { contents, config } = params;
   
-  // If config is provided, we need to handle it separately or pass it to generateContent
-  if (config) {
-    return await model.generateContent({
-      contents: contents.parts ? contents : { parts: contents },
-      ...config
-    });
-  }
-  
-  return await model.generateContent(contents.parts ? contents : { parts: contents });
+  // Ensure contents is in the correct format for @google/genai
+  const formattedContents = contents.parts ? [contents] : (Array.isArray(contents) ? contents : [{ role: "user", parts: Array.isArray(contents) ? contents : [contents] }]);
+
+  return await (ai as any).generateContent({
+    model: modelName,
+    contents: formattedContents,
+    config: config
+  });
 }
 
 /**
@@ -1005,8 +1015,8 @@ export const generateProductStudioImage = async (params: any): Promise<string> =
 
 export const removeBackground = async (imageB64: string): Promise<string> => {
   try {
-    const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+    const response = await withRetry(() => generateContent({
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           {
